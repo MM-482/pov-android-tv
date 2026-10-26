@@ -1,6 +1,6 @@
 # Installing and configuring the 0.3.0 working preview
 
-This guide describes the new working build. Validation is recorded in [the audit](AUDIT_0.3.0.md); the published GitHub preview is still 0.2.2 until a separate release is made.
+This guide describes 0.3.0-preview. Validation is recorded in [the audit](AUDIT_0.3.0.md); consult [public releases](https://github.com/MM-482/pov-android-tv/releases) for published downloads and matching source assets. The version-specific destination is [v0.3.0-preview](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview).
 
 ## Install or update
 
@@ -89,4 +89,4 @@ Your service credentials remain encrypted on the device. The build expects you t
 
 Use **PowerShell 7 (`pwsh`)** for the source-policy, packaging, and GitHub-preparation scripts. They use .NET APIs that are unavailable in the older Windows PowerShell 5.1 host. Run `scripts/bootstrap.ps1` and `scripts/build.ps1` from the matching source checkout to provision and use the project-local build tools. Source packaging and artifact checks remain separate local steps; they do not publish a release.
 
-The embedded VLC dependency makes the universal APK substantially larger than earlier previews. Its upstream license notices and native corresponding-source/rebuild requirements are described in [LibVLC notes](LIBVLC.md). The app-source ZIP does not yet include a complete, checked native LibVLC/VLC/contrib corresponding-source bundle or a verified replacement-library rebuild. Completing that work remains necessary before broad publication of this VLC-enabled build; a successful app build or privacy scan does not complete it.
+The embedded VLC dependency makes the universal APK substantially larger than earlier previews. Its pinned native sources are supplied separately from the application-source ZIP in the [prepared LibVLC source companion](https://github.com/MM-482/pov-android-tv/releases/download/v0.3.0-preview/POV-Android-TV-0.3.0-LibVLC-3.7.7-corresponding-sources.zip), available with the versioned release. The required source archive union, notices and all four ABI offline fetch checks passed, as did offline consumer-app assembly with the pinned AAR supplied locally. Native compilation, modified-library device behavior and byte-identical rebuilding were not tested. [LibVLC notes](LIBVLC.md) record the exact archive identity, prerequisites and replacement route.

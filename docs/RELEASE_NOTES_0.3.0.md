@@ -2,7 +2,7 @@
 
 Standalone app made by Mark Mateo. Based on the original POV Kodi add-on by kodifitzwell.
 
-This revision is being validated locally. It has not replaced the published 0.2.2 preview.
+These notes describe the 0.3.0-preview source and reviewed local artifacts. Consult [public releases](https://github.com/MM-482/pov-android-tv/releases) for published downloads; the version-specific destination is [v0.3.0-preview](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview).
 
 ## Six native themes
 
@@ -64,4 +64,4 @@ Three reviewed public-sample captures show [player controls](previews/0.3.0/play
 
 New-provider playback, MDBList/Simkl reporting, and online subtitle downloads have not been exercised with real accounts. A successful build or mocked API test does not verify those services, every video format, or other TV models. Playback audits now require changing video pixels after a nonblack baseline as well as decoder progress, so a moving timeline or a black-to-picture transition alone cannot pass as visible motion.
 
-The app-source ZIP includes LibVLC license notices and source/build provenance. It does not yet include a complete, checked native LibVLC/VLC/contrib corresponding-source bundle or a verified replacement-library rebuild. That redistribution work remains open before broad publication of the VLC-enabled build; see [LibVLC notes](LIBVLC.md).
+The app-source ZIP and [separate LibVLC source companion](https://github.com/MM-482/pov-android-tv/releases/download/v0.3.0-preview/POV-Android-TV-0.3.0-LibVLC-3.7.7-corresponding-sources.zip) are prepared together for the versioned release. The companion retains the pinned JNI/VLC snapshots, all 20 patches, 65 required contrib archives for 66 logical packages, configuration/checksum records, 292 upstream notice texts and NDK/runtime/cpu-features materials. Linux patch assembly and all four ABI offline contrib fetch targets passed. Offline POV assembly with the original pinned AAR through a local-file dependency passed; no native compilation, modified-engine device run or byte-identical rebuild was performed. See [LibVLC notes](LIBVLC.md) for exact identity and scope.

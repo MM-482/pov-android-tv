@@ -1,8 +1,8 @@
 # GitHub source and release checklist
 
-This checklist records technical publication requirements for the approved POV Standalone 0.2.2 preview. The owner has approved publication to [MM-482/pov-android-tv](https://github.com/MM-482/pov-android-tv) and the [v0.2.2-preview release](https://github.com/MM-482/pov-android-tv/releases/tag/v0.2.2-preview). These checks preserve the reviewed source, artifact identity, credits, privacy safeguards, and validation limits; they are not an additional owner-approval step.
+This checklist records technical publication requirements for POV Standalone source and preview releases in the approved [MM-482/pov-android-tv repository](https://github.com/MM-482/pov-android-tv). Consult [public releases](https://github.com/MM-482/pov-android-tv/releases) for published downloads. The version-specific 0.3.0 destination is [v0.3.0-preview](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview); older release results remain historical below. These checks preserve source, artifact identity, credits, privacy safeguards and validation limits; they are not an additional owner-approval step.
 
-The source checkout can contain a newer working preview than this published release. The 0.3.0 working changes have separate [setup instructions](INSTALL_0.3.0.md), [change notes](RELEASE_NOTES_0.3.0.md), and an [audit record](AUDIT_0.3.0.md). This document's 0.2.2 test/device results do not validate those newer changes or authorize publishing them.
+The 0.3.0 source has separate [setup instructions](INSTALL_0.3.0.md), [change notes](RELEASE_NOTES_0.3.0.md), and an [audit record](AUDIT_0.3.0.md). Updated application source is public in the repository. This document's 0.2.2 test/device results do not validate newer changes; release visibility and asset availability must be recorded from the actual publication result.
 
 ## Working 0.3.0 source-list checkpoint
 
@@ -13,19 +13,21 @@ The source checkout can contain a newer working preview than this published rele
 - [x] Record the completed historical archive scan: `7abc58…ee15` APK / `56aecc…05a0` source ZIP, 484 APK entries, 44,263 DEX strings, 221 allowlisted source entries, zero detector findings. It predates the source-list fix.
 - [x] Package the bd45 APK with its refreshed matching source ZIP and external checksums, then scan those exact artifacts: 484 APK entries, 44,283 DEX strings, 222 allowlisted source entries, zero detector findings. This is a bounded static check without image OCR; selected images were reviewed separately. The historical archive scan remains separately scoped.
 
-The [0.3.0 audit](AUDIT_0.3.0.md) records the full APK digests and remaining validation boundaries. This checkpoint does not publish a release. The native LibVLC source/contrib work below remains open.
+The [0.3.0 audit](AUDIT_0.3.0.md) records the full APK digests and remaining validation boundaries. Checkpoint completion alone does not publish a release. The native source-input checkpoint below has now also passed within its stated limits.
 
 ## Working 0.3.0 LibVLC source checkpoint
 
 - [x] Identify and inspect the exact official JNI and native-base repository archives. [LIBVLC.md](LIBVLC.md#inspected-pinned-source-archives) records their direct source locations, inspected byte counts, SHA-256 hashes, and the JNI recipe's 20-patch set.
-- [ ] Establish and retain the complete external contrib source set, relevant patches/checksums/licenses, and actual configuration corresponding to all four native ABIs in the distributed AAR. The inspected VLC archive contains 117 contrib recipes and zero external contrib source archives; the two pinned repository archives alone do not complete this item.
-- [ ] Verify a usable native rebuild and replacement/relinking route with the retained source inputs, and record the actual result for the binary being distributed.
+- [x] Retain the recipe-based source set across all four native ABIs: 67 source archives, comprising the two pinned snapshots plus 65 external contrib archives for 66 logical packages; all 20 patches; checksum/configuration records; 292 upstream license/notice texts and NDK/runtime/cpu-features materials. The original two-snapshot-only inspection is historical and was insufficient by itself.
+- [x] Apply all 20 patches on Linux and verify the resulting content tree; pass original offline contrib fetch targets for all four ABI configurations with compiler/network commands disabled.
+- [x] Verify offline POV app assembly with the original pinned AAR supplied through the local-file replacement route. This verifies the consumer entry point and packaging, not modified native runtime behavior.
+- [x] Package the separate [native-source companion](https://github.com/MM-482/pov-android-tv/releases/download/v0.3.0-preview/POV-Android-TV-0.3.0-LibVLC-3.7.7-corresponding-sources.zip): 380,536,553 bytes; SHA-256 `14482948d028d4b5ee66ca2166321ad2cb8ab418825e51bf60463a1b857b4bfe`; 421 relative entries with CRC/safe-path checks passed. Pair it with the APK, app-source ZIP and external checksums at the versioned release when published.
 
-Broad publication of the new VLC-enabled build remains subject to completing and checking this native source/contrib work. The archive inspection is source-provenance evidence; it does not establish complete source correspondence or a legal conclusion about redistribution.
+The retained-source, notices and consumer-route checkpoint is complete by the pinned recipe and conservative Android dependency union. No native compilation, modified-library device test or byte-identical native/AAR rebuild was performed. The supplied build/replacement instructions and checkpoint results do not constitute an independent legal-compliance opinion. See [LIBVLC.md](LIBVLC.md) for exact provenance and limits.
 
 ## Published 0.2.2 checkpoint
 
-The published checkpoint is **0.2.2-preview** (`versionCode 5`). The software-gain, player-handoff, and video-compatibility revision passed **227 unit tests**, with **0 failures, 0 errors, and 0 skipped**. The debug APK assembled successfully and lint reported **0 errors / 56 warnings**. That source includes a compact 124 dp integrated bottom player controller, every exposed audio/subtitle track with unknown/unsupported explanations, separate Automatic mode and actual selected state, and explicit source/multi-video file choices with stable IDs.
+The historical published checkpoint is **0.2.2-preview** (`versionCode 5`). The software-gain, player-handoff, and video-compatibility revision passed **227 unit tests**, with **0 failures, 0 errors, and 0 skipped**. The debug APK assembled successfully and lint reported **0 errors / 56 warnings**. That source includes a compact 124 dp integrated bottom player controller, every exposed audio/subtitle track with unknown/unsupported explanations, separate Automatic mode and actual selected state, and explicit source/multi-video file choices with stable IDs.
 
 The combined Sony Android 8 public-sample playback audit passed on the 227-test build. The final offline source/file fixture also passed seven rows in both D-pad directions with every focused row fully visible, five middle-source openings, 25 middle-file selections, exact Back restoration, and unchanged local history. The fixture uses synthetic choices and does not prove authenticated transfer or playback. Record exact artifact identities, scans, and exercised device results in [AUDIT_0.2.2.md](AUDIT_0.2.2.md); [RELEASE_NOTES_0.2.2.md](RELEASE_NOTES_0.2.2.md) is the current change-note file. Do not generalize this TV/sample to every device, codec, HDR, HDMI route, or account workflow.
 
@@ -115,7 +117,7 @@ Run the project scripts from a clean checkout on Windows:
 .\scripts\build.ps1
 ```
 
-Record version name/code, source commit, SHA-256 of the exact APK, unit-test totals, lint error/warning counts, and the TV/device checks that actually passed. Check all five appearances, saved theme selection after restart, Anime browsing/episodes, remote focus/Back navigation, account dialogs, and visible creator credit.
+Record version name/code, source commit, SHA-256 of the exact APK, unit-test totals, lint error/warning counts, and the TV/device checks that actually passed. For 0.3.0, check the six appearances, saved theme selection after restart, Anime browsing/episodes, remote focus/Back navigation, account dialogs, and visible creator credit; the older five-theme checkpoint remains historical.
 
 For 0.2.2, retain the passing public-sample controller geometry/hiding/loading, track selection, PCM, visible-motion, mini navigation, paused-position, and Stop/history results. Preserve the final offline source/file fixture separately from future authenticated ready/pending-transfer and chosen-file playback checks. Repeat relevant tests whenever the source or packaged APK changes.
 
@@ -123,7 +125,7 @@ A previous version's passing tests/screenshots do not validate this version. Kee
 
 Approved actual preview scope is `docs/previews/player-controls.png`, `player-audio.png`, and `player-hidden.png`, reviewed from the final combined public-sample run, plus `docs/previews/home-cinematic.png`, the actual Cinematic guest home with intentional gray account indicators. Keep the reviewed images intact. Actual Editorial, Neon, Cinema, and Dashboard home captures have not yet been taken; do not present generated concepts as those missing captures. The five original `design/01-cinematic.png` through `05-dashboard.png` images are generated reference concepts and must keep that label. Theme references do not establish the running app's state. Do not include connected account pages, private playback links, activation codes, or personal viewing history.
 
-The prepared [Android workflow](../.github/workflows/android.yml) runs the same scripts on `windows-latest`, with read-only repository permissions and no publishing step. It uploads only the debug APK and unit-test/lint reports. Its first successful hosted run remains a separate validation item after an approved source upload. The workflow uses the current major versions documented by [actions/checkout](https://github.com/actions/checkout) and [actions/upload-artifact](https://github.com/actions/upload-artifact); review them when updating CI.
+The [Android workflow](../.github/workflows/android.yml) runs the same scripts on `windows-latest`, with read-only repository permissions and no publishing step. It uploads only the debug APK and unit-test/lint reports. Record hosted results from the actual run for the relevant source revision; local build success does not establish hosted CI success. The workflow uses the current major versions documented by [actions/checkout](https://github.com/actions/checkout) and [actions/upload-artifact](https://github.com/actions/upload-artifact); review them when updating CI.
 
 ## Debug APK versus production release
 
@@ -138,7 +140,7 @@ An installed copy can update only with a compatible signing identity and permitt
 Owner approval has been received. For the approved preview publication:
 
 1. Use the approved repository, [MM-482/pov-android-tv](https://github.com/MM-482/pov-android-tv), and upload only the reviewed source set with its license, credits, README, and documentation.
-2. Pair the [v0.2.2-preview release](https://github.com/MM-482/pov-android-tv/releases/tag/v0.2.2-preview) with the exact reviewed APK, matching source ZIP, SHA-256 checksums, debug-signing label, source revision, and validation results.
+2. Pair the versioned release with its exact reviewed APK, matching source ZIP, SHA-256 checksums, debug-signing label, source revision and validation results. The [0.3.0 destination](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview) additionally pairs the separate pinned LibVLC native-source companion; keep the earlier 0.2.2 assets scoped to their historical release.
 3. Preserve known limitations and distinguish actual screenshots from generated concepts. In standalone release text, use an absolute repository/tag URL for documentation links rather than a source-relative path.
 4. Run the prepared GitHub workflow after upload and record its actual result. Local build success does not establish hosted CI success.
 5. Use verified repository/release/privacy links in the Reddit announcement and follow the selected community's rules. Keep credentials, private playback links, and account/device evidence out of public copy.
