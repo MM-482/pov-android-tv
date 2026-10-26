@@ -117,11 +117,32 @@ enum class ThemeSpec(
             titleTypeface = "sans-serif", titleLetterSpacing = 0f,
             sectionTitleSizeSp = 22, focusScale = 1.018f,
         ),
-    );
+    ),
+    GLASS("glass", "Glass", "A floating glass rail, spacious artwork, and soft white focus.", conceptPalette("glass"), conceptLayout("glass")),
+    ESSENTIAL("essential", "Essential", "The familiar cyan rail, clear actions, and compact watching cards.", conceptPalette("essential"), conceptLayout("essential")),
+    PREMIERE("premiere", "Premiere", "Warm cinema light, a quiet rail, and elegant serif typography.", conceptPalette("premiere"), conceptLayout("premiere")),
+    ATELIER("atelier", "Atelier", "An ivory canvas, a split feature, and restrained dark focus.", conceptPalette("atelier"), conceptLayout("atelier")),
+    HORIZON("horizon", "Horizon", "A slim top navigation, wide artwork, and cyan-violet focus.", conceptPalette("horizon"), conceptLayout("horizon")),
+    STUDIO("studio", "Studio", "A large watching tile, an episode column, and illustrated browse actions.", conceptPalette("studio"), conceptLayout("studio"));
+
+    val conceptProfile: ConceptThemeProfile? get() = ConceptThemeProfile.forTheme(this)
+    val isConcept: Boolean get() = conceptProfile != null
+    /** Playback controls always sit on a dark scrim, including the light Atelier appearance. */
+    val playbackAccent: Int get() = if (this == ATELIER) 0xFFF4F6FC.toInt() else palette.accent
+    val previewAsset: String get() = conceptProfile?.previewAsset ?: when (this) {
+        CINEMATIC -> "themes/01-cinematic.png"; EDITORIAL -> "themes/02-editorial.png"
+        NEON -> "themes/03-neon.png"; CINEMA -> "themes/04-cinema.png"; else -> "themes/05-dashboard.png"
+    }
 
     companion object {
+        val selectableThemes: List<ThemeSpec> get() = listOf(GLASS, ESSENTIAL, PREMIERE, ATELIER, HORIZON, STUDIO)
         /** Unknown or old preferences fall back to the user's selected concept. */
         fun fromId(id: String?): ThemeSpec = entries.firstOrNull { it.id == id } ?: CINEMATIC
+
+        fun conceptFromId(id: String?): ThemeSpec = when (val saved = entries.firstOrNull { it.id == id }) {
+            CINEMATIC -> ESSENTIAL; EDITORIAL -> ATELIER; NEON -> HORIZON
+            CINEMA -> PREMIERE; DASHBOARD -> STUDIO; null -> GLASS; else -> saved
+        }
     }
 }
 
@@ -169,6 +190,14 @@ class ThemePreferences(context: Context) {
         .getSharedPreferences("pov_appearance", Context.MODE_PRIVATE)
 
     fun selected(): ThemeSpec = ThemeSpec.fromId(preferences.getString(KEY, null))
+
+    /** Native concept upgrade; legacy readers retain their original round-trip behavior. */
+    fun selectedConcept(): ThemeSpec {
+        val stored = preferences.getString(KEY, null)
+        val selected = ThemeSpec.conceptFromId(stored)
+        if (stored != selected.id) preferences.edit().putString(KEY, selected.id).apply()
+        return selected
+    }
 
     fun select(theme: ThemeSpec) {
         preferences.edit().putString(KEY, theme.id).apply()

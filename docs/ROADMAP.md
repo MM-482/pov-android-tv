@@ -1,5 +1,7 @@
 # Roadmap
 
+The **0.3.0 working update** adds six native themes (Glass, Essential, Premiere, Atelier, Horizon, Studio), embedded VLC, Stop, local Continue Watching removal, local/online subtitles, six playback-service adapters, MDBList, and Simkl. See [its change notes](RELEASE_NOTES_0.3.0.md), [setup guide](INSTALL_0.3.0.md), and [validation record](AUDIT_0.3.0.md). The published release remains 0.2.2; the implementation and candidate tables below describe that earlier release. New authenticated-service validation and the native corresponding-source bundle remain release work.
+
 POV Standalone is an independent Android TV preview made by Mark Mateo, based on the original POV Kodi add-on by [kodifitzwell](https://github.com/kodifitzwell/repo). The list below separates functionality present in **0.2.2-preview** (`versionCode 5`) from future work. It is not a release schedule or a promise of service compatibility.
 
 ## Current 0.2.2 preview source

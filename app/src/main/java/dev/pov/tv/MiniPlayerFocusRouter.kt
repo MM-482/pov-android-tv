@@ -1,6 +1,5 @@
 package dev.pov.tv
 
-import android.view.FocusFinder
 import android.view.View
 import android.view.ViewGroup
 import android.graphics.Rect
@@ -38,8 +37,7 @@ internal class MiniPlayerFocusRouter(private val content: ViewGroup, private val
                 return mini.requestFocus()
             }
         }
-        val next = TvChoiceList.nextFrom(focused, direction)
-            ?: FocusFinder.getInstance().findNextFocus(content, focused, direction)
+        val next = TvChoiceList.findNext(content, focused, direction)
         if (next != null && next !== focused && next !== content && inside(next, content) && next.isShown && next.isFocusable) return false
         previous = WeakReference(focused)
         return mini.requestFocus()

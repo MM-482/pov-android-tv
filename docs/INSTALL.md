@@ -1,5 +1,7 @@
 # Install and set up POV Standalone
 
+For the **0.3.0 working update**, use [the new installation and service guide](INSTALL_0.3.0.md) and its [audit record](AUDIT_0.3.0.md). The instructions below describe the published 0.2.2 preview.
+
 POV Standalone is a native **Android TV 8.0 or later** app. Kodi is not required. This guide covers `0.2.2-preview` (`versionCode 5`), a sideload preview rather than a Google Play release. The current revision passed all 227 unit tests with 0 failures, errors, or skipped tests; the debug APK assembled successfully and lint reported 0 errors/56 warnings. The combined Sony Android 8 public-sample playback audit passed its controller, track-choice, decoded-PCM, visible-motion, and fullscreen/mini handoff checks. The final offline source/file fixture passed seven fully visible rows in both D-pad directions, five middle-source openings, 25 middle-file selections, exact Back restoration, and unchanged local history. See the [audit record](AUDIT_0.2.2.md) for exact packaged-artifact checks and exercised device paths, and the [change notes](RELEASE_NOTES_0.2.2.md) for implementation details.
 
 A separate Sony episode-navigation check passed eight sequential, fully visible rows, selected S1E9, and restored the same selection after Back; normal browsing was restored afterward. These checks cover their specific public-sample and navigation paths. They do not certify every TV, codec, HDMI route, or authenticated service workflow.

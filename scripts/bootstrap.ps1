@@ -38,7 +38,7 @@ New-Item -ItemType Directory -Path $env:ANDROID_USER_HOME -Force | Out-Null
 $sdkManager = Join-Path $cmdlineRoot 'latest\bin\sdkmanager.bat'
 1..30 | ForEach-Object { 'y' } | & $sdkManager "--sdk_root=$sdkRoot" --licenses
 if ($LASTEXITCODE -ne 0) { throw 'Android SDK license setup failed.' }
-& $sdkManager "--sdk_root=$sdkRoot" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+& $sdkManager "--sdk_root=$sdkRoot" 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 if ($LASTEXITCODE -ne 0) { throw 'Android SDK component setup failed.' }
 $sdkPropertyPath = $sdkRoot.Replace('\', '/').Replace(':', '\:')
 [System.IO.File]::WriteAllText((Join-Path $projectRoot 'local.properties'), "sdk.dir=$sdkPropertyPath`n", [System.Text.UTF8Encoding]::new($false))

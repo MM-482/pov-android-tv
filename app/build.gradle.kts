@@ -5,15 +5,16 @@ providers.gradleProperty("povBuildRoot").orNull?.let { layout.buildDirectory.set
 
 android {
     namespace = "dev.pov.tv"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "dev.pov.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.2.2-preview"
+        versionCode = 6
+        versionName = "0.3.0-preview"
         testInstrumentationRunner = "dev.pov.tv.PlaybackAuditInstrumentation"
     }
+    buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -28,6 +29,8 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    // Embed the engine; the separate VLC application is not required.
+    implementation("org.videolan.android:libvlc-all:3.7.7")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.8.0")

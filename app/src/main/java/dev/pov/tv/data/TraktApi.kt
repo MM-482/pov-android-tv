@@ -225,8 +225,9 @@ class TraktApi internal constructor(
     }
 
     /** Server-calculated next aired episode for up to ten most recently watched shows. */
-    fun nextEpisodes(): List<PlaybackIdentity> {
-        val watched = arrayRequest("/sync/watched/shows?extended=full")
+    fun nextEpisodes(expectedRevision: String = accountRevision()): List<PlaybackIdentity> {
+        val watched = try { JSONArray(accountBoundRead("/sync/watched/shows?extended=full", expectedRevision)) }
+        catch (error: ApiException) { throw error } catch (_: Exception) { malformed() }
         val recent = (0 until watched.length()).mapNotNull { watched.optJSONObject(it) }
             .sortedByDescending { it.optString("last_watched_at") }
             .filter { it.optJSONObject("show")?.let(::imdb) != null }.take(10)
@@ -234,11 +235,11 @@ class TraktApi internal constructor(
             val show = item.getJSONObject("show")
             val showId = show.optJSONObject("ids")?.optLong("trakt", -1)?.takeIf { it >= 0 }?.toString() ?: imdb(show)!!
             val progress = try {
-                objectRequest("/shows/${Net.encode(showId)}/progress/watched?hidden=false&specials=false")
+                JSONObject(accountBoundRead("/shows/${Net.encode(showId)}/progress/watched?hidden=false&specials=false", expectedRevision))
             } catch (error: ApiException) {
                 if (error.code == 404) return@mapNotNull null
                 throw error
-            }
+            } catch (_: Exception) { malformed() }
             parseNextEpisode(show, progress)
         }
     }
@@ -337,8 +338,51 @@ class TraktApi internal constructor(
         }
     }
 
-    private fun accessToken(forceForAccess: String? = null): String = synchronized(tokenLock) {
+    /** A multi-request read must never adopt a replacement account between pages or a 401 retry. */
+    private data class BoundRead(val access: String, val clientId: String, val revision: String)
+
+    private fun boundReadSnapshot(revision: String, forceForAccess: String? = null): BoundRead {
+        accessToken(forceForAccess, expectedRevision = revision)
+        return synchronized(authStateLock) {
+            ensureExpectedAccount(revision)
+            BoundRead(store.get("trakt.access_token"), clientId(), revision)
+        }
+    }
+
+    private fun ensureExpectedAccount(revision: String?) {
+        if (revision != null && (revision.isBlank() || accountRevision() != revision || !connected())) {
+            throw ApiException(401, "The Trakt account changed. Reopen this page with the current account.")
+        }
+    }
+
+    private fun ensureBoundRead(account: BoundRead) = synchronized(authStateLock) {
+        ensureExpectedAccount(account.revision)
+        if (store.get("trakt.client_id").trim() != account.clientId) {
+            throw ApiException(401, "The Trakt account changed. Reopen this page with the current account.")
+        }
+    }
+
+    private fun accountBoundRead(path: String, revision: String): String {
+        val account = boundReadSnapshot(revision)
+        fun fetch(snapshot: BoundRead): String {
+            val result = rateLimited {
+                ensureBoundRead(snapshot)
+                // All credentials were captured before I/O; no account lock is held on the network.
+                apiTransport("$BASE$path", "GET", headers(snapshot.access, snapshot.clientId), null)
+            }
+            ensureBoundRead(snapshot)
+            return result
+        }
+        return try { fetch(account) } catch (error: ApiException) {
+            if (error.code != 401) throw error
+            ensureBoundRead(account)
+            fetch(boundReadSnapshot(revision, forceForAccess = account.access))
+        }
+    }
+
+    private fun accessToken(forceForAccess: String? = null, expectedRevision: String? = null): String = synchronized(tokenLock) {
         val snapshot = synchronized(authStateLock) {
+            ensureExpectedAccount(expectedRevision)
             AccountSnapshot(store.get("trakt.access_token"), store.get("trakt.refresh_token"),
                 store.get("trakt.expires_at").toLongOrNull() ?: 0L, clientId(), accountGeneration)
         }
@@ -356,6 +400,7 @@ class TraktApi internal constructor(
         // or lost response cannot cause the same refresh token to be submitted a second time.
         val fingerprint = MessageDigest.getInstance("SHA-256").digest(refresh.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
         synchronized(authStateLock) {
+            ensureExpectedAccount(expectedRevision)
             ensureCurrentAccount(snapshot)
             if (store.get("trakt.refresh_pending") == fingerprint) {
                 throw ApiException(401, "The previous Trakt token refresh could not be confirmed. Link your account again.")
@@ -377,7 +422,7 @@ class TraktApi internal constructor(
             }
             throw e
         }
-        synchronized(authStateLock) { ensureCurrentAccount(snapshot); saveTokens(value) }
+        synchronized(authStateLock) { ensureExpectedAccount(expectedRevision); ensureCurrentAccount(snapshot); saveTokens(value) }
         required(value, "access_token")
     }
 

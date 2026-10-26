@@ -7,7 +7,9 @@ import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.FocusFinder
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -34,6 +36,45 @@ internal class TvChoiceList(context: Context) : LinearLayout(context) {
     }
 
     companion object {
+        /**
+         * Enter/leave a vertical list by reading order, as well as moving between its rows.
+         * API 26 FocusFinder's int distance score overflows for tall lists and can select
+         * a far-offscreen row when Down is pressed on the action immediately above them.
+         */
+        fun findNext(root: ViewGroup, focused: View, direction: Int): View? {
+            val vertical = direction == View.FOCUS_UP || direction == View.FOCUS_DOWN
+            if (vertical) {
+                nextFrom(focused, direction)?.let { return it }
+                val leaves = focusableLeaves(root)
+                val index = leaves.indexOf(focused)
+                if (index >= 0) {
+                    val adjacent = leaves.getOrNull(index + if (direction == View.FOCUS_DOWN) 1 else -1)
+                    if (focused.parent is TvChoiceList || adjacent?.parent is TvChoiceList) return adjacent
+                }
+            }
+            val candidate = FocusFinder.getInstance().findNextFocus(root, focused, direction)
+            // An entry from a horizontal action row must also enter at the list boundary,
+            // regardless of which distant child the platform's geometry search selected.
+            val list = candidate?.parent as? TvChoiceList
+            if (vertical && list != null && focused.parent !== list) {
+                val rows = (0 until list.childCount).map(list::getChildAt).filter(::eligible)
+                return if (direction == View.FOCUS_DOWN) rows.firstOrNull() else rows.lastOrNull()
+            }
+            return candidate
+        }
+
+        private fun eligible(view: View) = view.isShown && view.isEnabled && view.isFocusable
+        private fun focusableLeaves(root: ViewGroup): List<View> {
+            val leaves = mutableListOf<View>()
+            fun collect(view: View) {
+                if (view !== root && eligible(view)) leaves += view
+                if (view is ViewGroup && view.descendantFocusability != FOCUS_BLOCK_DESCENDANTS)
+                    for (index in 0 until view.childCount) collect(view.getChildAt(index))
+            }
+            collect(root)
+            return leaves
+        }
+
         /** Shared by normal navigation and the mini player's edge detection. */
         fun nextFrom(focused: View, direction: Int): View? {
             if (direction != View.FOCUS_UP && direction != View.FOCUS_DOWN) return null

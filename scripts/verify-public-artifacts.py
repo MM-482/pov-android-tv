@@ -18,6 +18,7 @@ import struct
 import string
 import sys
 import unittest
+from unittest import mock
 import zipfile
 
 MAX_ENTRY = 64 * 1024 * 1024
@@ -46,6 +47,57 @@ PUBLIC_ALPHABETS = {string.ascii_uppercase + string.ascii_lowercase + string.dig
                     string.ascii_uppercase + string.ascii_lowercase + string.digits,
                     string.digits + string.ascii_lowercase + string.ascii_uppercase,
                     string.ascii_lowercase + string.ascii_uppercase + string.digits}
+# Reviewed public source provenance for org.videolan.android:libvlc-all:3.7.7.
+# Evidence: the matching official libvlcjni build.gradle and buildsystem/get-vlc.sh,
+# recorded with the artifact's resource revisions in docs/LIBVLC.md. These are URL-
+# scoped source commits, not general exemptions for identical hexadecimal values.
+PUBLIC_SOURCE_URL_ROOTS = (
+    'https://code.videolan.org/videolan/libvlcjni/-/tree/0b8dc65efb203c86a0476bc337ddd99ecf1c0ef6',
+    'https://code.videolan.org/videolan/libvlcjni/-/blob/0b8dc65efb203c86a0476bc337ddd99ecf1c0ef6',
+    'https://code.videolan.org/videolan/vlc/-/tree/84177b2273abc5c4300234e6e18b55a4d2dd5a03',
+)
+# Exact official source archives downloaded, bounded, hashed and inspected for
+# docs/LIBVLC.md. An archive filename, revision, host, suffix or query change is
+# not covered. This does not exempt either revision as a standalone literal.
+PUBLIC_SOURCE_ARCHIVE_URLS = (
+    'https://code.videolan.org/videolan/libvlcjni/-/archive/0b8dc65efb203c86a0476bc337ddd99ecf1c0ef6/libvlcjni-0b8dc65efb203c86a0476bc337ddd99ecf1c0ef6.tar.gz',
+    'https://code.videolan.org/videolan/vlc/-/archive/84177b2273abc5c4300234e6e18b55a4d2dd5a03/vlc-84177b2273abc5c4300234e6e18b55a4d2dd5a03.tar.gz',
+)
+# Exact APK bytes compared with the unmodified official Maven AAR below. The AAR
+# has SHA256 b48dab96e0e90e34cce3861963500c144a5aadb1b249d501d6a4b104d849e61b.
+# https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.7.7/libvlc-all-3.7.7.aar
+# Native parser markers/symbols and Lua's public third-party client identifiers are
+# upstream library content, not the app owner's account data. A changed file is
+# a failure AND remains subject to the normal content checks. These pins do not
+# authorize source files, different archive paths, or other dependency versions.
+REVIEWED_UPSTREAM_APK = {
+    'lib/arm64-v8a/libc++_shared.so': '0c52cfab2df0d957' 'd8b346a2bdc5ae8d' '71feca2591924d77' 'e1cd724d5bf74352',
+    'lib/arm64-v8a/libvlc.so': '4d5bb84df69c876d' 'a7dbc13555b9243b' 'fc77666b2893a562' '52eb15af033774c4',
+    'lib/arm64-v8a/libvlcjni.so': '599962b01292c011' '56ff876e806cb95b' '9e249ccf704c5c2c' 'eb56ff73e1b70f83',
+    'lib/armeabi-v7a/libc++_shared.so': '092a44574c247982' 'e265743acb1227e1' '1a2f079a765814fe' 'f1b627dbfb2b79d5',
+    'lib/armeabi-v7a/libvlc.so': '30ae77c864280778' 'fa8bc79d8ebae62a' '5a2ecd23fbef439b' '4d961e1ded76abef',
+    'lib/armeabi-v7a/libvlcjni.so': '94ae498ac406e106' '5a947b7e7b5ffd06' '482ca2b3542d69a1' '6c89da0dc14bff0b',
+    'lib/x86/libc++_shared.so': '3051dd001301b810' '24779099e11f657f' '10e983d02aa1b16f' '18e711ec33685314',
+    'lib/x86/libvlc.so': '6cd9e82c2a1d39de' '0ecf8cec05fa215d' '51830fa3fdb75f3e' '2a7d7381ff486f8c',
+    'lib/x86/libvlcjni.so': 'c47ee2e337ee7116' '9d0b99926334e9d7' 'bc5f8a2e67d12715' '6a54a2e9f726af8a',
+    'lib/x86_64/libc++_shared.so': 'e28cb9e0f456caf8' '498d0e8562b3ac3f' '73bf78c07555a52b' '5602396f240abec3',
+    'lib/x86_64/libvlc.so': '345d0030ed9568d2' '138fda86dd2a6df5' '48be02149dd29dc9' '77a29d2a482f0801',
+    'lib/x86_64/libvlcjni.so': '4ecfc592a1226345' '056cd94805acbee9' 'd8020fafb10ab8eb' 'c37bcad3d79a2102',
+    'assets/lua/playlist/soundcloud.lua': 'ba38d814dc6d75a0' 'fa80f555fce132b8' '6d8bb01fa3dced6f' '232e49f185931a3d',
+    'assets/lua/playlist/twitch.lua': '51a1a1ad502cf313' 'd1befce19040fff3' '6889038b81a1d1fb' 'b815e808cfdd34a2',
+}
+
+
+def public_source_revision(url):
+    clean = url.rstrip(').,;]')
+    if '?' in clean or '#' in clean:
+        return None
+    if clean in PUBLIC_SOURCE_ARCHIVE_URLS:
+        return clean.rsplit('/', 2)[-2]
+    for root in PUBLIC_SOURCE_URL_ROOTS:
+        if clean == root or clean.startswith(root + '/'):
+            return root.rsplit('/', 1)[-1]
+    return None
 
 
 def safe_name(name):
@@ -107,7 +159,9 @@ def scan_text(text, name, public_digests, dex=False, binary=False):
         if any(opaque_value(value, public_digests) for value in candidates):
             rules.add('opaque-literal-needs-review')
         for match in URL.finditer(line):
-            if any(opaque_value(part, public_digests) for part in re.split(r'[/?:&=]', match.group())):
+            reviewed_revision = public_source_revision(match.group())
+            if any(part != reviewed_revision and opaque_value(part, public_digests)
+                   for part in re.split(r'[/?:&=]', match.group().rstrip(').,;]'))):
                 rules.add('opaque-url-configuration')
         issues.extend(finding(rule, name, number) for rule in sorted(rules))
     return issues
@@ -184,7 +238,7 @@ def audit_archive(path, kind, public_digests=()):
     raw = path.getvalue() if isinstance(path, io.BytesIO) else Path(path).read_bytes()
     name = 'synthetic.zip' if isinstance(path, io.BytesIO) else Path(path).name
     result = {'kind': kind, 'file': safe_name(name), 'sha256': hashlib.sha256(raw).hexdigest(),
-              'entries': 0, 'dex_strings': 0, 'issues': []}
+              'entries': 0, 'dex_strings': 0, 'reviewed_upstream_entries': [], 'issues': []}
     public_digests = set(public_digests)
     try:
         with zipfile.ZipFile(path) as archive:
@@ -210,6 +264,13 @@ def audit_archive(path, kind, public_digests=()):
                     result['issues'].append(finding('entry-cannot-be-audited', name))
                     continue
                 data = archive.read(info)
+                if kind == 'apk' and name in REVIEWED_UPSTREAM_APK:
+                    digest = hashlib.sha256(data).hexdigest()
+                    if digest == REVIEWED_UPSTREAM_APK[name]:
+                        result['reviewed_upstream_entries'].append({'entry': name, 'sha256': digest,
+                            'provenance': 'Unmodified official org.videolan.android:libvlc-all:3.7.7 AAR entry.'})
+                        continue
+                    result['issues'].append(finding('reviewed-upstream-bytes-changed', name))
                 if name.lower().endswith('.dex'):
                     try:
                         values = dex_strings(data)
@@ -266,6 +327,54 @@ class SyntheticTests(unittest.TestCase):
         self.assertEqual([], scan_text('"' + digest + '"', 'bootstrap.ps1', {digest}))
         self.assertTrue(scan_text('"' + digest + '"', 'unexpected.kt', set()))
 
+    def test_public_source_revision_is_allowed_only_in_its_reviewed_upstream_url(self):
+        source = PUBLIC_SOURCE_URL_ROOTS[0]
+        revision = source.rsplit('/', 1)[-1]
+        self.assertEqual([], scan_text(source + '/libvlc/patches', 'NOTICE.txt', set()))
+        self.assertTrue(scan_text('"' + revision + '"', 'unexpected.kt', set()))
+        self.assertTrue(scan_text('https://example.invalid/config/' + revision, 'unexpected.md', set()))
+        self.assertTrue(scan_text(source + '?token=' + revision, 'unexpected.md', set()))
+        # A second, unrelated opaque path component must still be reviewed.
+        value = hashlib.sha256(b'not-an-upstream-revision').hexdigest()
+        self.assertTrue(scan_text(source + '/' + value, 'unexpected.md', set()))
+
+    def test_public_source_archive_requires_the_exact_reviewed_official_url(self):
+        unrelated = hashlib.sha256(b'not-an-archive-credential').hexdigest()
+        for source in PUBLIC_SOURCE_ARCHIVE_URLS:
+            revision = source.rsplit('/', 2)[-2]
+            self.assertEqual([], scan_text(source, 'docs/LIBVLC.md', set()))
+            self.assertTrue(scan_text('"' + revision + '"', 'unexpected.kt', set()))
+            self.assertTrue(scan_text(source.replace('code.videolan.org', 'example.invalid'), 'unexpected.md', set()))
+            self.assertTrue(scan_text(source.replace('https://', 'http://'), 'unexpected.md', set()))
+            self.assertTrue(scan_text(source.rsplit('/', 1)[0] + '/unreviewed.tar.gz', 'unexpected.md', set()))
+            self.assertTrue(scan_text(source.replace(revision, unrelated[:40]), 'unexpected.md', set()))
+            self.assertTrue(scan_text(source + '?token=' + unrelated, 'unexpected.md', set()))
+            self.assertTrue(scan_text(source + '#token=' + unrelated, 'unexpected.md', set()))
+            self.assertTrue(scan_text(source + '/' + unrelated, 'unexpected.md', set()))
+
+    def test_upstream_entry_classification_requires_exact_bytes_and_path(self):
+        name = 'lib/test/libfixture.so'
+        fixture = ('public parser marker ' + '-----BEGIN ' + 'PRIVATE KEY-----').encode()
+        digest = hashlib.sha256(fixture).hexdigest()
+
+        def archive(entry, content):
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, 'w') as output:
+                output.writestr(entry, content)
+            stream.seek(0)
+            return stream
+
+        with mock.patch.dict(REVIEWED_UPSTREAM_APK, {name: digest}):
+            exact = audit_archive(archive(name, fixture), 'apk')
+            self.assertEqual(1, len(exact['reviewed_upstream_entries']))
+            altered = audit_archive(archive(name, fixture + b' altered'), 'apk')
+            self.assertEqual([], altered['reviewed_upstream_entries'])
+            self.assertTrue(any(i['rule'] == 'reviewed-upstream-bytes-changed' for i in altered['issues']))
+            self.assertTrue(any(i['rule'] == 'private-key-material' for i in altered['issues']))
+            other_path = audit_archive(archive('assets/unreviewed.bin', fixture), 'apk')
+            self.assertEqual([], other_path['reviewed_upstream_entries'])
+            self.assertTrue(any(i['rule'] == 'private-key-material' for i in other_path['issues']))
+
     def test_binary_utf16_private_configuration_is_scanned(self):
         contents = io.BytesIO()
         with zipfile.ZipFile(contents, 'w') as archive:
@@ -305,7 +414,8 @@ def main():
               'limitations': ['Heuristic static checks cannot prove every secret is absent.',
                               'No OCR or visual review of images/video; no encrypted payload inspection.',
                               'Does not prove APK/source equivalence or third-party service behavior.',
-                              'Recognized public synthetic fixtures and explicit bootstrap SHA256 pins are allowed.']}
+                              'Exact reviewed LibVLC AAR entries are classified by APK path and SHA256; changed bytes remain failures and are scanned.',
+                              'Recognized public synthetic fixtures, explicit bootstrap SHA256 pins and exact reviewed upstream source-revision URLs are allowed.']}
     output = json.dumps(report, indent=2)
     print(output)
     if args.report:

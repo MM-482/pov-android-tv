@@ -38,6 +38,46 @@ class PlaybackStore(context: Context) {
         if (it.position > 30_000 && it.duration > 0 && it.position < it.duration * 0.95) it.position else 0
     } ?: 0
 
+    /** Hiding a row is local to POV; it never removes a watch event from a connected service. */
+    fun continueWatching(): List<Recent> = synchronized(lock) {
+        recent().filter { it.duration > 0 && it.position < it.duration * 0.95 && !isHidden(it.key, it.identity) }
+    }
+
+    fun isHidden(key: String = "", identity: PlaybackIdentity? = null): Boolean = synchronized(lock) {
+        val hidden = hiddenLocked()
+        (key.isNotBlank() && "key:$key" in hidden) || (identity != null && identityMarker(identity) in hidden)
+    }
+
+    fun hideFromContinueWatching(key: String, identity: PlaybackIdentity?) = synchronized(lock) {
+        require(key.isNotBlank() || identity != null) { "Choose a title to remove." }
+        val hidden = hiddenLocked().toMutableSet()
+        if (key.isNotBlank()) hidden += "key:$key"
+        identity?.let { hidden += identityMarker(it) }
+        writeHidden(hidden)
+    }
+
+    /** Only an intentional new play clears dismissal; periodic progress saves cannot resurrect it. */
+    fun beginPlayback(key: String, identity: PlaybackIdentity?) = synchronized(lock) {
+        val hidden = hiddenLocked().toMutableSet()
+        hidden.remove("key:$key")
+        identity?.let { hidden.remove(identityMarker(it)) }
+        writeHidden(hidden)
+    }
+
+    private fun hiddenLocked(): Set<String> = try {
+        val values = JSONArray(preferences.getString("hidden_continue", "[]"))
+        (0 until values.length()).mapNotNull { values.optString(it).takeIf(String::isNotBlank) }.toSet()
+    } catch (_: Exception) { emptySet() }
+
+    private fun writeHidden(hidden: Set<String>) {
+        check(preferences.edit().putString("hidden_continue", JSONArray(hidden.toList()).toString()).commit()) {
+            "Continue Watching preference could not be saved."
+        }
+    }
+
+    private fun identityMarker(identity: PlaybackIdentity) =
+        "identity:${identity.type}:${identity.imdbId}:${identity.season}:${identity.episode}"
+
     /** Each replacement gets a revision so an older network completion cannot remove it. */
     fun queue(identity: PlaybackIdentity, percent: Double, action: String): String = synchronized(lock) {
         require(percent.isFinite() && percent in 0.0..100.0) { "Invalid playback progress." }

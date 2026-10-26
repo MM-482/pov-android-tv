@@ -1,0 +1,124 @@
+# 0.3.0 working-preview audit
+
+Date: October 26, 2026. The current source-list candidate has passed its automated checks and the Sony 70-row native focus audit. Full player checks belong to the preceding APK. Packaging and the exact APK/source archive privacy scan passed for the current candidate; the earlier archive pass remains historical.
+
+The working tree started at public main `c5a64e9`. The published GitHub preview remains 0.2.2. This document distinguishes current source checks, exercised TV paths, and work still required before another public release.
+
+## Build and automated checks
+
+- App and AndroidTest APKs assemble successfully with compile API 36, target API 35, minimum API 26, and LibVLC 3.7.7.
+- The current source-list candidate passes **418 tests across 54 suites, with 0 failures, 0 errors, 0 skipped**. Both the main and AndroidTest APKs assembled. Its Sony source/file audit passed as scoped below; full player paths have not been rerun on this APK.
+- The latest production-code Android lint run reports **0 errors / 57 warnings**; the subsequent addition was unit-test coverage only. Remaining warnings cover localization, dependency/target updates, custom views, and layout/resource advice; they have not been broadly suppressed.
+- Source-screen regressions exercise 70 rows across all six themes, with and without a synthetic mini-player, bottom-edge return, and exact Back restoration at the middle viewport. API 26 / 1920-pixel fixtures use the actual 202-pixel rows and 18-pixel gaps; the pre-fix implementation reproduced index 59 instead of the first row.
+- The preceding packaging checkpoint passed 15 public-source policy fixtures and 13 artifact-checker self-tests. Its exact archive scan remains historical. The refreshed bd45 APK/source pair has now also been packaged and scanned with zero detector findings, as recorded below.
+
+The built main APK is `0.3.0-preview`, version code 6, SHA-256:
+
+```text
+bd45a36d214a48da688b878c9dcf9c4b942333899d5395539602fb8bddf869e0
+```
+
+This identifies the current source-list fix APK. The current native source/file, fresh signature/update, and exact APK archive scan results apply to these bytes. The preceding `7abc58…ee15` APK supplies the full Media3/VLC/Continue Watching evidence below; those player/feature paths have not been rerun on `bd45a3…69e0`. Six Home captures retain the `582cec…6273` candidate's visual scope, and three player captures retain their `7abc58…ee15` scope. Current and historical archive scan results are recorded separately below.
+
+The API tests use injected fake transports and synthetic accounts. They verify request/response contracts, stale-account rejection, quotas, pagination, token rotation, consent, and retry behavior. They do not establish successful authenticated playback or synchronization with real accounts.
+
+## Bugs found and fixed
+
+- On a long source list, the first Down press from the header jumped to index 59 of 70 instead of index 0, landing on a 720p choice. The Sony native baseline and an API 26 / 1920-pixel regression reproduced the same index. Android 8's distance-based focus scoring can overflow on distant rows. `TvChoiceList.findNext` now chooses ordered header entry/exit and adjacent indexed rows; controller and mini-player routes use that same path. The post-fix 70-row native result is recorded below. The earlier seven-row fixture did not expose this long-list failure.
+- A physical VLC run crashed when native track names replaced parsed descriptions while retaining Media3's old label list. `VlcTrackFormats` now rebuilds labels consistently, preserves metadata, and handles partial or blank descriptions. Regressions reproduce the exact old assertion.
+- Later native surface recreation was not observed after first attachment, and a rapid VLC detach/reattach could leave video disabled while its asynchronous output count was stale. The session now observes surface loss/recreation with identity fences and cleanup, and the current native surfaces-ready callback explicitly enables video once. Playback position and play/pause state are retained; six regressions cover lifecycle and ordering. Physical post-fix results are recorded separately below.
+- Actual theme captures exposed Premiere/Horizon artwork extending below their card focus bounds and offscreen watching-row content drawing into the reserved right margin. Their artwork height now matches their card height. A subsequent Sony check showed `clipChildren` alone was insufficient on the TV; explicit viewport `clipBounds` and an exact four-card width now retain scroll access. The six reviewed 582-candidate captures below verify the corrected clipping.
+- Sony diagnostics identified multi-second output pauses with MTK VP9 and AVC after codec recreation on `SVP-DTV15`, API 26, despite buffered media. Counter-only observations before any incoming-target screenshot showed later recovery by six seconds; these observations did not qualify as a motion pass. The current policy promotes advertised `OMX.google.h264.decoder` for AVC on that exact device/API while preserving all other fallback order; it retains the exact MTK VP9 exclusion and conditional soft H.264 preference. Only decoders actually returned for the secure/tunneling query can be promoted. Alternative VP9 decoders remain eligible, actual format support can still choose supported hardware, and an unsupported source can still fail. Other devices/API versions, explicit MIME preferences, the selected engine, and VLC behavior are unchanged. The immediate public-sample audit below confirms Google AVC on the preceding `7abc58…ee15` APK; larger-file and sustained software CPU/power/performance behavior is untested.
+- An incoming Media3 PlayerView previously attached the codec before applying its known aspect ratio, so a valid 1920×1080 surface could resize to 1350×1080 after binding. The session now primes the content aspect before binding and waits for settled view dimensions matching the actual holder frame. Four real PlayerView/AspectRatioFrameLayout regressions reproduce the old ordering and cover fullscreen, mini, non-square pixels, and stale buffer geometry. This is separately checked from decoder policy and visible-motion results.
+- Visible Media3 captions could cross the timeline. Their viewport now reserves the measured controller height plus a gap while controls are visible, follows layout changes, and restores its original padding when hidden or released. Native VLC subtitle surfaces are unchanged.
+- Provider requests held UI-visible locks, repeat file selections could start concurrent work, and failed preparation could leave a screen busy. Network work now uses immutable account snapshots outside locks and clears busy state on failure.
+- Stale source, folder, file/version, and Back-stack callbacks could adopt a replacement account. Revisions now follow the selected account through UI callbacks, queued requests, responses, and playback. TorBox's download-link query and header use the same captured token. Old unbound raw-cloud history requires explicit reselection.
+- Playback launch/history-write failures could escape on the main thread. Initial, Resume, and Start over now share a guarded launch, show a sanitized error, and reset the launch guard on failure.
+- Continue Watching removal is persisted locally. Periodic playback saves cannot resurrect a hidden title; intentional playback can. External watched history is retained.
+- SubSource only searched its first season-results page. Search now follows bounded official pagination, filters each page for the requested episode, and detects duplicate pages/IDs. Combined episode subtitles such as S01E01E02 and ranges are matched correctly.
+- A late OpenSubtitles login response could restore cached authorization after clearing or replacing credentials. Settings writes and login persistence now share an atomic revision guard, including same-credential re-addition. Password spaces are preserved.
+- Native row/timeline remote navigation refreshed POV's hide timer but left Media3's previous deadline active. Visible interaction now refreshes both timers; the playing-player regression crosses the old deadline and verifies the new deadline still hides all chrome.
+- Studio Up Next now captures one Trakt revision through watched-show reads, per-show progress reads, and a 401 refresh/retry. Replacement accounts cannot supply credentials to an old request or receive its late tokens/results; four offline regressions exercise those boundaries.
+- Corrupted playback preferences now fall back safely. An inherited malformed Windows PATH is normalized only inside the build process, leaving saved Windows settings unchanged.
+
+MDBList/Simkl automatic playback reporting is default-off, requires explicit per-account consent, and is checked before recording and dispatch. Disabling consent or changing/disconnecting an account invalidates unsent work. The existing Trakt integration is retained.
+
+## Sony installation and runtime checks
+
+The authorized target identifies as BRAVIA 4K 2015 on Android 8. The installed 0.2.2-preview was updated in place to 0.3.0-preview (code 6). The old and new APK certificates match: SHA-256 `67ca219d2e539401f9b778a480e5ad7eada20afb0b7f9ea1ef5095c58ce3b8ff`. No uninstall or app-data clear was used. Current account-preservation evidence uses the fresh update-specific fingerprint described below; account contents were not exported.
+
+Earlier 0.3.0 Media3 public-sample checks exercised all 10 exposed audio and 4 subtitle tracks, manual and automatic selections, D-pad option navigation, 124 dp bottom-controller geometry, complete hiding of timeline/loading/actions, decoded PCM boost, shared fullscreen/mini handoffs, edge focus, and Stop. A prior candidate's adaptive-fallback audit passed visible mini motion with 40 changed grid cells and 26 newly rendered video buffers, one-Right access from Play/Pause to Stop, and exact 0 ms paused handoffs. Playback preferences and local history were restored/unchanged. These are preceding-candidate results, not final-APK evidence.
+
+The first VLC run exposed the track-label crash above. Its interrupted test preferences were identified exactly and restored to the prior defaults, without changing account storage. Earlier native VLC progressive checks exercised two audio and eight subtitle tracks, local SRT attachment, fullscreen video motion, paused handoffs, remote navigation, and Stop; the Android document picker was available. Later mini regressions showed why a moving clock, positive decoder statistics, or a first-frame notification alone is insufficient: a target could remain static or black. The final instrumentation requires a nonblack image baseline and then changing video pixels plus decoder progress.
+
+The preceding `7abc58…ee15` APK passed the strengthened native VLC audit on the Sony. All measured baselines and follow-up images were nonblack and nonuniform. Visible-motion results after each baseline were:
+
+| VLC target | Changed video-grid cells | Newly rendered pictures after baseline | Wait for a nonblack baseline |
+| --- | --- | --- | --- |
+| Initial fullscreen | 161 | 33 | 412 ms |
+| Mini-player | 170 | 31 | 1,040 ms |
+| Returned fullscreen | 188 | 25 | 1,634 ms |
+
+The same run passed two audio/eight subtitle tracks, manual native selections, local SRT attachment, Android document-picker availability, reuse of the same player, mini Right-edge/Menu/hold-Select/Return controls, and visible Stop one Right from Play/Pause. Both paused handoffs changed position by 0 ms. Local history and playback preferences were restored. The measured picture waits mean these are working retained-session transitions, not a claim of instant picture presentation.
+
+The strict Media3 repeat on the preceding `582cec…6273` candidate failed at `mini_public_video_motion`: three actual nonblack/nonuniform mini pictures were identical while position advanced from 12.435 to 15.990 seconds. Newly rendered buffers after the baseline were 0; 22 buffers had been rendered before that baseline. The target surface was valid, the first-frame callback matched that actual surface, and no target-surface loss was observed. Further diagnostics and geometry/decoder changes followed; these preceding-candidate failures are retained as the reason for the current compatibility work.
+
+The preceding `7abc58…ee15` APK passed the immediate Media3 adaptive-fallback audit with actual `OMX.google.h264.decoder`, initialization count 1 and release count 0 through fullscreen, mini, and returned fullscreen. It used the normal immediate audit, not the optional six-second pre-screenshot counter observation. The mini produced 223 changed video-grid cells and 30 newly rendered post-baseline frames; returned fullscreen produced 33 changed cells and 29 frames. Both had real nonblack/nonuniform baselines and changing follow-up pixels. Picture-baseline waits were 235 ms for mini and 321 ms for returned fullscreen.
+
+That run also passed all 10 audio/four subtitle tracks, all 11 audio-menu rows, manual/Automatic/Off selection, 124 dp controls and hiding, same-player retained browsing/mini/Return handoffs, Menu/hold-Select/Right-edge actions, visible Stop one Right from Play/Pause, and both paused position deltas at 0 ms. The PCM boost check processed 2,048 frames and reset to Off. Playback preferences and history were restored.
+
+A separate immediate mini-only repetition passed on the same APK and actual Google AVC, retaining decoder initialization count 1/release count 0 through all targets:
+
+| Repeated Media3 target | Changed video-grid cells | Newly rendered frames after baseline |
+| --- | --- | --- |
+| Mini-player | 239 | 26 |
+| Returned fullscreen | 88 | 25 |
+| Reused mini-player | 124 | 29 |
+
+On `7abc58…ee15`, the Continue Watching fixture passed the production native long-Select menu, D-pad Remove selection, removal from visible rows, persistence in a fresh store, and staying hidden after refresh. Recent history was unchanged, and hidden state/pending tracking were restored. Its source-choice fixture passed seven source/file rows in both directions, fully visible focused rows, five middle-source openings, 25 middle-file selections, exact source restoration on Back, and unchanged history. That short fixture did not cover the subsequently reproduced 70-row overflow.
+
+The current `bd45a3…69e0` APK passed the expanded Sony native source-choice audit: 70 rows and two complete round trips; Down from the top header entered the first row, Up returned to the header, and subsequent Down presses entered the first and second rows without a jump. Five middle sources and 25 middle files were selected, Back restored the exact source, every focused card was fully visible, and history was unchanged. This is an offline synthetic fixture, not an authenticated provider transfer or player-motion test.
+
+Fresh standalone `apksigner --verbose --print-certs` verification of the current `bd45a3…69e0` APK passed APK Signature Scheme v2 with one signer. Its certificate SHA-256 is `67ca219d2e539401f9b778a480e5ad7eada20afb0b7f9ea1ef5095c58ce3b8ff`, matching the retained earlier installation key. The installed Sony bytes match this built APK. The current in-place update and cleanup did not require an uninstall or app-data clear. Full player proofs remain scoped to `7abc58…ee15`.
+
+All six `582cec…6273` guest Home captures have now been reviewed and copied byte-for-byte into [the actual/concept comparison gallery](previews/0.3.0/index.html). The refreshed images show complete fourth cards, no fifth-card sliver in Premiere/Atelier/Horizon, and readable Horizon text. Guest state was checked before/after capture, and the prior appearance preference was restored exactly. These public-discovery captures contain no connected account pages or private viewing history. This capture run used a verified appearance override; it did not repeat native theme-picker selection or keyboard-focus checks. Those checks covered all six layouts on preceding candidates. The visual results apply to the `582cec…6273` APK and do not establish playback or a later APK's behavior.
+
+Three additional reviewed public-sample player captures use the preceding `7abc58…ee15` APK: [controls](previews/0.3.0/player-controls.png), [audio options](previews/0.3.0/player-audio.png), and [controls hidden](previews/0.3.0/player-hidden.png). These nine approved images are the 0.3.0 public preview set; private runtime reports and unreviewed captures remain excluded.
+
+| Check and APK scope | Status |
+| --- | --- |
+| Current `bd45a3…69e0`: main/AndroidTest assembly, unit tests, lint | Passed: 418 tests across 54 suites; 0 failures/errors/skips; latest production-code lint 0 errors / 57 warnings; subsequent test-only addition. |
+| APK version and file digest | Recorded above: 0.3.0-preview / code 6. |
+| Current `bd45a3…69e0`: signing and in-place Sony update identity | Fresh standalone v2 signature verification passed with one signer and the retained certificate; installed bytes match the build. Fresh pre-update encrypted-account fingerprint matched after cleanup; temporary audit package removed and normal POV launched. |
+| Preceding `7abc58…ee15`: Media3 selected codec, adaptive fallback, tracks, controls, visible motion, and shared-session handoffs | Passed immediate audit and separate mini-only repetition: actual Google AVC; init 1 / release 0; nonblack baselines plus changing video/decoder progress; tracks/controls/PCM/0 ms paused handoffs/history restoration. Not rerun on bd45. |
+| Preceding `7abc58…ee15`: native VLC progressive playback, tracks/SRT, controls, visible motion, and shared-session handoffs | Passed full/mini/returned motion 161/170/188 changed cells with 33/31/25 new pictures; two audio/eight subtitle tracks; local SRT/picker; 0 ms paused handoffs; native selection/options/one-Right Stop; state restoration. Not rerun on bd45. |
+| Preceding `7abc58…ee15`: Continue Watching removal/restoration and pending-history preservation | Passed native feature fixture; durable local hiding/refresh behavior; recent history unchanged and hidden/pending state restored. |
+| Current `bd45a3…69e0`: source/file D-pad navigation and exact Back restoration | Passed 70 rows/two full round trips, ordered header entry/exit, five middle sources/25 middle files, all focused cards fully visible, exact Back restoration, and unchanged history. Offline synthetic choices. |
+| All six themes and reviewed guest Home captures | Passed visual refresh on preceding 582 APK: corrected clipping, complete fourth cards, readable Horizon, public guest state, exact appearance restoration. Reviewed gallery files retain that scope; this patch changes no concept/layout/assets. Native selection/focus checks remain earlier-candidate evidence. |
+| Historical `7abc58…ee15` APK / `56aecc…05a0` source ZIP privacy scan | Passed: 484 APK entries, 44,263 DEX strings, 221 allowlisted source entries, zero detector findings in either archive; 15 source-policy fixtures and 13 scanner self-tests passed. |
+| Current `bd45a3…69e0` APK / refreshed source ZIP privacy scan | Passed: 484 APK entries, 44,283 DEX strings, 222 allowlisted source entries, zero detector findings. The historical pair remains separate and does not contain the source-list fix. |
+
+The preceding `7abc58…ee15` checkpoint retains its installed-identity and runtime restoration results. The account-preservation statement below relies on the fresh bd45 update baseline, not an older cross-session fingerprint. The current source-list fixture separately confirms unchanged history and restored guest browsing.
+
+The current bd45 cleanup independently verified installed bytes against the built digest, removed the temporary audit package, and launched normal POV. Its encrypted account file matched the fresh fingerprint captured immediately before this update. That baseline is specific to this update; it is not a claim that account bytes match an older pre-0.3 session. No account or history contents were exported.
+
+## Exact local artifacts and publication
+
+The completed historical archive audit applies to APK SHA-256 `7abc586da8aa878bd735f4abec30439eeb56e06f22e4ac54b34975ef6e3dee15` and app-source ZIP SHA-256 `56aecc6487552d2cfd50932715e609dc137bb0caf9c28a77485b992d170a05a0`. Both had zero detector findings; that APK matched the installed bytes and its source ZIP contained 221 allowlisted files. Those archives predate the long-list fix.
+
+The current `bd45a3…69e0` APK and refreshed source ZIP have been packaged and passed their exact archive privacy scan with zero detector findings: 484 APK entries, 44,283 DEX strings, and 222 allowlisted source entries. The refreshed source ZIP's digest belongs in the external `SHA256SUMS.txt`, alongside its APK checksum, and not inside the ZIP it identifies. App-source packaging is separate from the incomplete external native/contrib bundle below. Verification reports, unreviewed device captures, inspection material, tooling, runtime preferences/history, and private signing keys remain outside the public source allowlist. Only reviewed public-sample/guest images belong in public documentation.
+
+The checker treats reviewed upstream material narrowly: 12 native libraries and two Lua playlist files are classified only when their exact paths and hashes match the pinned official LibVLC AAR. Altered bytes fail and undergo ordinary scanning. Public upstream Lua client identifiers are library content, not the owner's account credentials.
+
+The current source includes the LibVLC license, notices, exact dependency identity, source pins, patch recipe, and replacement-library instructions. Completing and checking the native corresponding-source/contrib bundle remains release work before broad publication of this VLC-enabled build; see [LIBVLC.md](LIBVLC.md). No new GitHub release or Reddit announcement has been published during this update.
+
+## Remaining validation boundaries
+
+- The current bd45 candidate passed the expanded source/file focus fixture. Immediate Media3, independent mini repetition, native VLC, and Continue Watching proofs remain scoped to the preceding 7abc APK. These do not certify other sources or TVs; a moving position/decoder counter alone is not accepted as visible video motion.
+- The current bd45 APK/source pair and historical 7abc / 56ae pair passed separately scoped privacy scans. These bounded static checks do not establish every third-party behavior, prove every secret absent, or perform image OCR; reviewed guest/public-sample images were checked separately.
+- The six reviewed guest Home captures establish the 582 candidate's corrected layout. Native selection/focus checks are scoped to earlier candidates, and neither those results nor generated concepts establish playback or a later APK's behavior.
+- Authenticated new-provider streams, MDBList/Simkl reporting, and online subtitle account downloads have not been exercised with real accounts.
+- Storage/USB/network SRT choices require an installed Android document provider; POV has no built-in SMB browser. Provider availability is reported separately from subtitle-parser tests.
+- VLC boost is unavailable. Protected Easynews streams use Media3's credential-safe redirect handling for that session, preserving the saved engine preference.
+- Broader codec, HDR, HDMI audio, network, and device compatibility remain separate work. No claim of a bug-free app or universal compatibility is made.
+- Software AVC performance for larger files, sustained CPU/power use, and other formats has not been established. Actual format-support ranking retains supported hardware fallback; the successful public sample is not an all-format software-decoding claim.

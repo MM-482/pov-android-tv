@@ -24,6 +24,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioOffloadSupport
 import androidx.media3.exoplayer.audio.AudioSink
@@ -47,19 +50,39 @@ import java.util.concurrent.Executors
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 object InAppPlaybackSession {
     private var application: Application? = null
-    private var player: ExoPlayer? = null
+    private var player: Player? = null
     private var mediaSession: MediaSession? = null
     private var targetView: WeakReference<PlayerView>? = null
     private lateinit var history: PlaybackStore
     private lateinit var trakt: TraktApi
     private var sourceUrl = ""
+    private var sourceHeaders: Map<String, String> = emptyMap()
     private var sourceKey = ""
     private var identity: PlaybackIdentity? = null
     var title: String = ""
         private set
     var error: PlaybackException? = null
         private set
-    val playerOrNull: ExoPlayer? get() = player
+    internal var startFailure: String? = null
+        private set
+    /** Preserved for the existing decoder/PCM instrumentation audit. UI uses currentPlayer. */
+    val playerOrNull: ExoPlayer? get() = player as? ExoPlayer
+    val currentPlayer: Player? get() = player
+    internal fun ownsVideoTarget(view: PlayerView): Boolean = targetView?.get() === view && view.player === player
+    internal var videoSurfaceLossCount = 0
+        private set
+    internal var videoSurfaceRebindCount = 0
+        private set
+    internal var videoTargetSwitchCount = 0
+        private set
+    private val videoBindingGeometry = java.util.WeakHashMap<PlayerView, VideoBindingGeometry>()
+    internal fun videoBindingGeometry(view: PlayerView): VideoBindingGeometry? = videoBindingGeometry[view]?.copy()
+    var engine: PlaybackEngine = PlaybackEngine.MEDIA3
+        private set
+    var engineNotice: String? = null
+        private set
+    internal val subtitleIdentity: PlaybackIdentity? get() = identity
+    internal val supportsVolumeBoost: Boolean get() = engine == PlaybackEngine.MEDIA3
     internal val volumeBoost = SessionVolumeBoost(
         dispatchToMain = { task -> handler.post { task() } },
         onStateChanged = { notifyChanged() },
@@ -72,24 +95,68 @@ object InAppPlaybackSession {
     private var backgroundPause = false
     private val listeners = linkedSetOf<() -> Unit>()
     private val handler = Handler(Looper.getMainLooper())
-    private val surfaceAttachment = SurfaceReadyAttachment<ExoPlayer, PlayerView>(
+    private val surfaceAttachment = SurfaceReadyAttachment<Player, PlayerView>(
         currentSession = { player?.takeUnless { releasing } },
         isReady = { view ->
+            val current = player
+            if (current is ExoPlayer) Media3VideoLayout.prime(view, current.videoSize)
+            val surface = view.videoSurfaceView as? SurfaceView
             view.isAttachedToWindow && view.isShown && view.windowVisibility == View.VISIBLE &&
-                (view.videoSurfaceView as? SurfaceView)?.holder?.surface?.isValid == true
+                view.isLaidOut && !view.isLayoutRequested && view.width > 0 && view.height > 0 &&
+                surface?.isShown == true && surface.windowVisibility == View.VISIBLE &&
+                surface.width > 0 && surface.height > 0 && !surface.isLayoutRequested &&
+                surface.holder.surface.isValid && surface.holder.surfaceFrame.width() > 0 && surface.holder.surfaceFrame.height() > 0 &&
+                (current !is ExoPlayer || Media3VideoLayout.geometryMatchesSurface(view))
         },
         observeReadiness = { view, ready -> observeSurfaceReadiness(view, ready) },
         attach = { exo, view ->
             val previous = targetView?.get()
+            if (exo is ExoPlayer) {
+                val surface = view.videoSurfaceView as SurfaceView
+                val content = view.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+                videoBindingGeometry[view] = VideoBindingGeometry(surface.width, surface.height,
+                    surface.holder.surfaceFrame.width(), surface.holder.surfaceFrame.height(), content.width, content.height)
+            }
             if (previous === view) {
                 if (view.player !== exo) view.player = exo
-            } else PlayerView.switchTargetView(exo, previous, view)
+                else (view.videoSurfaceView as? SurfaceView)?.let {
+                    exo.clearVideoSurfaceView(it)
+                    exo.setVideoSurfaceView(it)
+                    videoSurfaceRebindCount++
+                }
+            } else {
+                PlayerView.switchTargetView(exo, previous, view)
+                videoTargetSwitchCount++
+            }
             previous?.keepScreenOn = false
             targetView = WeakReference(view)
+            videoBindingGeometry[view]?.layoutRequestedAfterBinding = view.isLayoutRequested ||
+                view.videoSurfaceView?.isLayoutRequested == true
             view.keepScreenOn = exo.isPlaying
             // Pending attachment can finish after Activity.onStart. Refresh controller scheduling
             // only after ownership is committed; same-target reentry below does not notify again.
             notifyChanged()
+        },
+        keepObservingAfterAttach = true,
+        observeSurfaceLoss = { view, lost ->
+            val holder = (view.videoSurfaceView as? SurfaceView)?.holder
+            val callback = object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) = Unit
+                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+                override fun surfaceDestroyed(holder: SurfaceHolder) { lost() }
+            }
+            holder?.addCallback(callback)
+            ({ holder?.removeCallback(callback) })
+        },
+        onSurfaceLost = { exo, view ->
+            // A SurfaceView can recreate its native surface while its PlayerView
+            // and holder identities remain unchanged (for example on window return).
+            // Clear once now; the persistent readiness observer rebinds once the
+            // replacement has real dimensions. Playback/position remain untouched.
+            if (targetView?.get() === view && view.player === exo) {
+                (view.videoSurfaceView as? SurfaceView)?.let(exo::clearVideoSurfaceView)
+                videoSurfaceLossCount++
+            }
         },
     )
     private val syncWorker = Executors.newSingleThreadExecutor()
@@ -140,14 +207,26 @@ object InAppPlaybackSession {
     fun addListener(listener: () -> Unit) { listeners += listener }
     fun removeListener(listener: () -> Unit) { listeners -= listener }
 
+    fun prepareRequest(url: String, headers: Map<String, String>): String = ProtectedPlaybackRequests.add(url, headers)
+
     /** Returns false for an invalid link without disturbing an existing session. */
     internal fun start(context: Context, intent: Intent, saved: Bundle? = null): Boolean {
         initialize(context)
+        startFailure = null
         val address = intent.getStringExtra("url").orEmpty()
         val uri = try { Uri.parse(address) } catch (_: RuntimeException) { null }
         if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) return false
+        val requestToken = intent.getStringExtra("playback_request")?.takeIf(String::isNotBlank)
+        val request = requestToken?.let(ProtectedPlaybackRequests::take)
+        if ((requestToken != null && (request == null || request.url != address)) ||
+            (saved?.getBoolean("protectedPlayback", false) == true && request == null)) {
+            startFailure = "Reopen this protected source from the library to refresh its credentials."
+            return false
+        }
         stopInternal(notify = false)
+        videoSurfaceLossCount = 0; videoSurfaceRebindCount = 0; videoTargetSwitchCount = 0
         sourceUrl = address
+        sourceHeaders = request?.headers ?: emptyMap()
         sourceKey = intent.getStringExtra("key").orEmpty()
         title = intent.getStringExtra("title").orEmpty()
         identity = try { intent.getStringExtra("identity")?.let { PlaybackIdentity.fromJson(JSONObject(it)) } } catch (_: Exception) { null }
@@ -160,6 +239,43 @@ object InAppPlaybackSession {
         error = null
         lastSyncAction = ""
         lastSyncAt = 0L
+        val preferences = PlaybackPreferences(context)
+        engine = saved?.getString("engine")?.let { value -> PlaybackEngine.entries.firstOrNull { it.name == value } }
+            ?: preferences.selectedEngine
+        val route = PlaybackEngineRouting.choose(engine, address, sourceHeaders.isNotEmpty())
+        engine = route.engine
+        engineNotice = route.notice
+        val exo: Player = try {
+            if (engine == PlaybackEngine.VLC) LibVlcPlayer(NativeVlcDriver(application!!), preferences.subtitleLanguage)
+            else createMedia3Player()
+        } catch (_: LinkageError) {
+            startFailure = "The embedded VLC engine is unavailable on this device. Choose Media3 in Settings."
+            sourceHeaders = emptyMap()
+            return false
+        } catch (_: RuntimeException) {
+            startFailure = "The playback engine could not start. Try another engine in Settings."
+            sourceHeaders = emptyMap()
+            return false
+        }
+        player = exo
+        val openApp = PendingIntent.getActivity(application, 0, Intent(application, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        mediaSession = MediaSession.Builder(application!!, exo).setSessionActivity(openApp).build()
+        configureSessionListener(exo)
+        exo.setMediaItem(MediaItem.Builder().setUri(address)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build(), position)
+        val initialTracks = parameters ?: exo.trackSelectionParameters.buildUpon()
+            .setPreferredTextLanguage(preferences.subtitleLanguage)
+            .setSelectUndeterminedTextLanguage(false).build()
+        exo.trackSelectionParameters = if (exo is ExoPlayer) Media3DecoderPolicy.trackParameters(initialTracks) else initialTracks
+        exo.prepare()
+        exo.playWhenReady = shouldPlay
+        restartCheckpoint()
+        notifyChanged()
+        return true
+    }
+
+    private fun createMedia3Player(): ExoPlayer {
         val gainProcessor = volumeBoost.createAudioProcessor()
         val renderers = object : DefaultRenderersFactory(application!!) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
@@ -188,15 +304,21 @@ object InAppPlaybackSession {
                 }
             }
         }
-        val exo = ExoPlayer.Builder(application!!, renderers)
+        renderers.setMediaCodecSelector(Media3DecoderPolicy.selector())
+        if (Media3DecoderPolicy.affected()) renderers.setEnableDecoderFallback(true)
+        val builder = ExoPlayer.Builder(application!!, renderers)
+        if (sourceHeaders.isNotEmpty()) {
+            val headers = sourceHeaders.toMap()
+            builder.setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(application!!,
+                DataSource.Factory { ProtectedHttpDataSource(headers) })))
+        }
+        return builder
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
-        player = exo
-        parameters?.let { exo.trackSelectionParameters = it }
-        val openApp = PendingIntent.getActivity(application, 0, Intent(application, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        mediaSession = MediaSession.Builder(application!!, exo).setSessionActivity(openApp).build()
+    }
+
+    private fun configureSessionListener(exo: Player) {
         exo.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
                 if (!isCurrent(exo) || enforceVideoCompatibility(exo, tracks)) return
@@ -253,14 +375,6 @@ object InAppPlaybackSession {
                 notifyChanged()
             }
         })
-        exo.setMediaItem(MediaItem.Builder().setUri(address)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build())
-        exo.seekTo(position)
-        exo.prepare()
-        exo.playWhenReady = shouldPlay
-        restartCheckpoint()
-        notifyChanged()
-        return true
     }
 
     internal fun matches(intent: Intent): Boolean = player != null &&
@@ -272,6 +386,7 @@ object InAppPlaybackSession {
             view.keepScreenOn = exo.isPlaying
             return
         }
+        if (exo is ExoPlayer) Media3VideoLayout.prime(view, exo.videoSize)
         surfaceAttachment.request(exo, view)
     }
 
@@ -279,6 +394,7 @@ object InAppPlaybackSession {
         surfaceAttachment.cancel(view)
         if (targetView?.get() === view) targetView = null
         if (view.player != null) view.player = null
+        videoBindingGeometry.remove(view)
         view.keepScreenOn = false
     }
 
@@ -310,10 +426,11 @@ object InAppPlaybackSession {
         volumeBoost.close()
         targetView?.get()?.let { it.player = null; it.keepScreenOn = false }
         targetView = null
+        videoBindingGeometry.clear()
         mediaSession?.release(); mediaSession = null
         exo?.release(); player = null
-        sourceUrl = ""; sourceKey = ""; title = ""; identity = null
-        remotePercent = 0.0; error = null
+        sourceUrl = ""; sourceHeaders = emptyMap(); sourceKey = ""; title = ""; identity = null
+        remotePercent = 0.0; error = null; engineNotice = null
         if (notify) notifyChanged()
     }
 
@@ -322,6 +439,8 @@ object InAppPlaybackSession {
         out.putLong("position", exo.currentPosition.coerceAtLeast(0))
         out.putBoolean("playWhenReady", exo.playWhenReady && exo.playbackState != Player.STATE_ENDED)
         out.putDouble("remotePercent", remotePercent)
+        out.putString("engine", engine.name)
+        out.putBoolean("protectedPlayback", sourceHeaders.isNotEmpty())
         out.putBundle("tracks", exo.trackSelectionParameters.toBundle())
     }
 
@@ -334,33 +453,76 @@ object InAppPlaybackSession {
             .also { value -> identity?.let { value.putExtra("identity", it.toJson().toString()) } }
     }
 
+    /** Caller has copied/downloaded a local SRT. Changes affect this session, keeping its clock and pause state. */
+    internal fun loadSubtitle(uri: Uri, displayName: String, language: String?, mimeType: String = MimeTypes.APPLICATION_SUBRIP): Boolean {
+        val current = player ?: return false
+        if (uri.scheme != "file" && uri.scheme != "content") return false
+        if (current is LibVlcPlayer) return current.addSubtitle(uri)
+        val item = current.currentMediaItem ?: return false
+        val external = MediaItem.SubtitleConfiguration.Builder(uri)
+            .setMimeType(mimeType).setLabel(displayName.take(160))
+            .setLanguage(language).setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+        val position = current.currentPosition.coerceAtLeast(0)
+        val playing = current.playWhenReady
+        current.trackSelectionParameters = current.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(language).setSelectUndeterminedTextLanguage(true).build()
+        current.setMediaItem(item.buildUpon().setSubtitleConfigurations(listOf(external)).build(), position)
+        current.prepare(); current.playWhenReady = playing
+        return true
+    }
+
     internal fun setVolumeBoostGain(db: Int): VolumeBoostState {
+        if (!supportsVolumeBoost) return if (db == 0) VolumeBoostState.OFF else VolumeBoostState.UNAVAILABLE
         val result = volumeBoost.setGain(db)
         notifyChanged()
         return result
     }
 
-    private fun isCurrent(exo: ExoPlayer) = !releasing && player === exo
+    private fun isCurrent(exo: Player) = !releasing && player === exo
     private fun observeSurfaceReadiness(view: PlayerView, ready: () -> Unit): () -> Unit {
-        val holder = (view.videoSurfaceView as? SurfaceView)?.holder
+        val surface = view.videoSurfaceView as? SurfaceView
+        val holder = surface?.holder
+        fun recordGeometry() {
+            if (targetView?.get() !== view || view.player !== player) return
+            val recorded = videoBindingGeometry[view] ?: return
+            val currentSurface = surface ?: return
+            val width = currentSurface.width
+            val height = currentSurface.height
+            val bufferWidth = holder?.surfaceFrame?.width() ?: 0
+            val bufferHeight = holder?.surfaceFrame?.height() ?: 0
+            if (recorded.surfaceWidthAfter != width || recorded.surfaceHeightAfter != height) recorded.surfaceResizeCount++
+            if (recorded.bufferWidthAfter != bufferWidth || recorded.bufferHeightAfter != bufferHeight) recorded.bufferResizeCount++
+            recorded.surfaceWidthAfter = width; recorded.surfaceHeightAfter = height
+            recorded.bufferWidthAfter = bufferWidth; recorded.bufferHeightAfter = bufferHeight
+        }
         val surfaceCallback = object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) { ready() }
-            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { ready() }
+            // Finish the framework's created/changed callback dispatch before
+            // installing output callbacks on this holder or rebinding its player.
+            override fun surfaceCreated(holder: SurfaceHolder) { view.post { ready() } }
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                recordGeometry(); view.post { ready() }
+            }
             override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
         }
         // Creation can precede visible-window/layout state. The first eligible draw retries the
         // same pending request; no surface is attached while its holder is still invalid.
         val observer = view.viewTreeObserver
         val preDraw = ViewTreeObserver.OnPreDrawListener { ready(); true }
+        val layout = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> recordGeometry() }
         holder?.addCallback(surfaceCallback)
+        surface?.addOnLayoutChangeListener(layout)
         observer.addOnPreDrawListener(preDraw)
         return {
             holder?.removeCallback(surfaceCallback)
+            surface?.removeOnLayoutChangeListener(layout)
             if (observer.isAlive) observer.removeOnPreDrawListener(preDraw)
             else view.viewTreeObserver.takeIf { it.isAlive }?.removeOnPreDrawListener(preDraw)
         }
     }
-    private fun enforceVideoCompatibility(exo: ExoPlayer, tracks: Tracks = exo.currentTracks): Boolean {
+    private fun enforceVideoCompatibility(exo: Player, tracks: Tracks = exo.currentTracks): Boolean {
+        // Media3 capability reports cannot establish LibVLC's hardware/software decoder support.
+        if (exo !is ExoPlayer) return false
         val existing = error as? VideoCompatibilityException
         val issue = existing?.issue ?: VideoPlaybackCompatibility.issue(tracks, exo.playbackState, exo.videoFormat)
         if (issue == null) return false
@@ -391,6 +553,17 @@ object InAppPlaybackSession {
         if (error is VideoCompatibilityException) return
         val media = identity ?: return
         val exo = player ?: return
+        // These integrations default to off. MainActivity's per-service consent dialog names
+        // the IDs/progress/events sent; only its explicit Enable tracking action enables them.
+        // The queue also rechecks the same account-bound consent immediately before dispatch.
+        if (exo.duration > 0) {
+            try {
+                if (AdditionalTracking.isEnabled(application!!, "mdblist") || AdditionalTracking.isEnabled(application!!, "simkl")) {
+                    val percent = (exo.currentPosition.toDouble() * 100 / exo.duration).coerceIn(0.0, 100.0)
+                    AdditionalTracking.record(application!!, media, percent, action)
+                }
+            } catch (_: Exception) { /* Optional, explicitly enabled tracking cannot interrupt playback. */ }
+        }
         val connected = try { trakt.connected() } catch (_: Exception) { false }
         if (!connected || exo.duration <= 0) return
         val percent = (exo.currentPosition.toDouble() * 100 / exo.duration).coerceIn(0.0, 100.0)

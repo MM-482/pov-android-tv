@@ -12,15 +12,16 @@ class SourceResolver internal constructor(
     private val monotonicNanos: () -> Long = System::nanoTime,
     private val pause: (Long) -> Unit = Thread::sleep
 ) {
-    constructor(store: SecureStore, torbox: TorBoxApi) : this({ store.get("sources.endpoint") }, object : SourceTorBox {
-        override fun cached(hashes: List<String>) = torbox.cached(hashes)
-        override fun addMagnet(hash: String) = torbox.addMagnet(hash)
-        override fun folder(kind: String, id: Long) = torbox.folder(kind, id)
-        override fun streamUrl(kind: String, folderId: Long, fileId: Long) = torbox.streamUrl(kind, folderId, fileId)
-    })
+    constructor(store: SecureStore, torbox: TorBoxApi) : this({ store.get("sources.endpoint") }, ApiSourceTorBox(torbox))
     /** Fetching choices is read-only: checking the TorBox cache does not create a transfer. */
-    fun sources(identity: PlaybackIdentity): List<SourceItem> {
+    fun sources(identity: PlaybackIdentity, expectedRevision: String? = null): List<SourceItem> = sourceChoices(identity, true, expectedRevision)
+
+    /** Other accounts must not inherit TorBox cache claims or perform TorBox account requests. */
+    fun sourcesUncached(identity: PlaybackIdentity): List<SourceItem> = sourceChoices(identity, false)
+
+    private fun sourceChoices(identity: PlaybackIdentity, checkTorBox: Boolean, expectedRevision: String? = null): List<SourceItem> {
         validateIdentity(identity)
+        val cacheRevision = if (checkTorBox) expectedRevision ?: torbox.accountRevision() else null
         val endpoint = endpoint(sourceEndpoint())
         val id = if (identity.type == "series") {
             "${identity.imdbId}:${identity.season}:${identity.episode}"
@@ -59,11 +60,12 @@ class SourceResolver internal constructor(
                     .filter { it.isNotBlank() }.joinToString(" · ").take(800)
             )
         }.distinctBy { Triple(it.infoHash, it.fileIndex, it.directUrl) }
+        if (!checkTorBox) return choices.map { it.copy(cached = false) }
         val cached = mutableSetOf<String>()
         var cacheAvailable = true
         try {
             choices.map { it.infoHash }.filter { it.isNotBlank() }.distinct().chunked(40).forEach {
-                cached += torbox.cached(it).map { hash -> hash.lowercase(Locale.ROOT) }
+                cached += torbox.forRevision(requireNotNull(cacheRevision)).cached(it).map { hash -> hash.lowercase(Locale.ROOT) }
             }
         } catch (_: Exception) {
             cacheAvailable = false
@@ -79,8 +81,13 @@ class SourceResolver internal constructor(
     }
 
     /** Called only after the user selects a source. May add that source to the user's TorBox library. */
-    fun prepare(source: SourceItem, identity: PlaybackIdentity): PreparedSource {
+    fun prepare(source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): PreparedSource {
         validateIdentity(identity)
+        val revision = expectedRevision ?: torbox.accountRevision()
+        if (expectedRevision != null && torbox.accountRevision() != expectedRevision) {
+            throw ApiException(401, "The TorBox account changed. Reopen this source or cloud folder.")
+        }
+        val session = torbox.forRevision(revision)
         require(identity.type != "series" || !EpisodeFilename.isExplicitMismatch(source.title, identity.season, identity.episode)) {
             "This source identifies a different episode. Choose another source."
         }
@@ -90,14 +97,14 @@ class SourceResolver internal constructor(
         }
         val hash = source.infoHash.lowercase(Locale.ROOT)
         require(HASH.matches(hash)) { "The selected source has no valid torrent hash." }
-        val transfer = torbox.addMagnet(hash)
+        val transfer = session.addMagnet(hash)
         // Cached transfers normally expose files immediately. Uncached transfers stay in TorBox;
         // a bounded wait keeps the UI from spinning indefinitely and never deletes user transfers.
         val deadline = monotonicNanos() + 20_000_000_000L
         do {
             if (Thread.currentThread().isInterrupted) throw InterruptedException("Source preparation was cancelled.")
             val folder = try {
-                torbox.folder("torrents", transfer)
+                session.folder("torrents", transfer)
             } catch (error: ApiException) {
                 // A freshly accepted transfer may not have appeared in the library yet.
                 if (error.code == 404 || error.errorKey == "ITEM_NOT_FOUND") null else throw error
@@ -118,13 +125,16 @@ class SourceResolver internal constructor(
     }
 
     /** Compatibility for callers that can handle only a single, unambiguous stream. */
-    fun resolve(source: SourceItem, identity: PlaybackIdentity): String = when (val prepared = prepare(source, identity)) {
-        is PreparedSource.Direct -> prepared.url
-        is PreparedSource.Files -> {
-            val file = prepared.automaticFile ?: throw IllegalStateException("This source contains multiple video versions. Choose a video file before playing.")
-            val url = torbox.streamUrl(prepared.folder.kind, prepared.folder.id, file.id)
-            require(isHttps(url)) { "TorBox did not return a supported HTTPS playback link." }
-            url
+    fun resolve(source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): String {
+        val revision = expectedRevision ?: torbox.accountRevision()
+        return when (val prepared = prepare(source, identity, revision)) {
+            is PreparedSource.Direct -> prepared.url
+            is PreparedSource.Files -> {
+                val file = prepared.automaticFile ?: throw IllegalStateException("This source contains multiple video versions. Choose a video file before playing.")
+                val url = torbox.forRevision(revision).streamUrl(prepared.folder.kind, prepared.folder.id, file.id)
+                require(isHttps(url)) { "TorBox did not return a supported HTTPS playback link." }
+                url
+            }
         }
     }
 
@@ -160,10 +170,22 @@ internal data class VideoCandidate(val id: Long, val name: String, val size: Lon
 
 /** The adapter never treats a provider's zero-based file index as a TorBox file ID. */
 internal interface SourceTorBox {
+    fun accountRevision(): String = ""
+    fun forRevision(revision: String): SourceTorBox = this
     fun cached(hashes: List<String>): Set<String>
     fun addMagnet(hash: String): Long
     fun folder(kind: String, id: Long): CloudFolder
     fun streamUrl(kind: String, folderId: Long, fileId: Long): String
+}
+
+/** Production requests bind to one account; default methods keep existing offline mocks compatible. */
+private class ApiSourceTorBox(private val api: TorBoxApi, private val revision: String? = null) : SourceTorBox {
+    override fun accountRevision() = api.accountRevision()
+    override fun forRevision(revision: String): SourceTorBox = ApiSourceTorBox(api, revision)
+    override fun cached(hashes: List<String>) = api.cached(hashes, revision)
+    override fun addMagnet(hash: String) = api.addMagnet(hash, revision)
+    override fun folder(kind: String, id: Long) = api.folder(kind, id, revision)
+    override fun streamUrl(kind: String, folderId: Long, fileId: Long) = api.streamUrl(kind, folderId, fileId, revision)
 }
 
 /** File selection intentionally does not equate a provider's zero-based fileIdx with a TorBox file id. */

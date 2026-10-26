@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>POV 0.3.0 - six theme comparison</title>
+<style>
+:root{color-scheme:dark;font-family:Segoe UI,Arial,sans-serif;background:#080d17;color:#f3f6fb}body{max-width:1720px;margin:auto;padding:32px}h1{font-size:clamp(24px,3vw,40px);margin:6px 0 12px;font-weight:600}p{color:#b7c4d7;line-height:1.6;max-width:1050px}nav{display:flex;gap:8px;flex-wrap:wrap;margin:26px 0}button{background:#172234;color:#d8e2f0;border:1px solid #34435b;border-radius:9px;padding:12px 18px;font:inherit;cursor:pointer}button[aria-pressed=true]{background:#eaf9ff;color:#091321;border-color:#eaf9ff}button:focus-visible,a:focus-visible{outline:3px solid #59dfff;outline-offset:4px}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:20px}figure{margin:0;background:#111b2a;border:1px solid #28374b;border-radius:12px;overflow:hidden}figcaption{padding:14px 18px;font-weight:600}figure img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:black}a{color:#8fe7ff}.credit{font-size:13px;margin-top:28px}@media(max-width:900px){.comparison{grid-template-columns:1fr}body{padding:20px}}
+</style>
+<body><h1>POV: six themes on the Sony TV</h1>
+<p>Approved generated references beside actual guest Home captures from POV 0.3.0 on the Sony Android 8 TV. The concepts contain fictional titles; the app uses live catalog titles and artwork. Guest captures show discovery instead of private Continue Watching or account data. Glass on Android 8 uses tinted gradients and borders.</p>
+<nav aria-label="Choose a theme"></nav>
+<div class="comparison"><figure><figcaption id="reference-label">Approved concept</figcaption><a id="reference-link"><img id="reference" alt=""></a></figure><figure><figcaption id="actual-label">Actual Sony capture</figcaption><a id="actual-link"><img id="actual" alt=""></a></figure></div>
+<p id="description"></p><p>Use keys 1-6 or Left/Right to compare. Select an image to open it at full resolution.</p>
+<p class="credit">Standalone app made by Mark Mateo. Based on the original POV Kodi add-on by kodifitzwell.</p>
+<script>
+'use strict';
+const themes=[
+['Glass','01-glass-apple-tv.png','Floating rail, white focus and expansive artwork.'],
+['Essential','02-essential-classic.png','Fixed dark rail, cyan focus and aligned watching cards.'],
+['Premiere','03-premiere-cinematic.png','Warm cinema palette, serif title and a wide lower card row.'],
+['Atelier','04-atelier-light.png','Ivory canvas, top navigation and split feature artwork.'],
+['Horizon','05-horizon-futuristic.png','Top navigation, wide artwork and cyan/violet accents.'],
+['Studio','06-studio-dashboard.png','Asymmetrical feature, episode column and browsing shortcuts.']];
+const nav=document.querySelector('nav');let selected=0;
+themes.forEach((theme,index)=>{const button=document.createElement('button');button.type='button';button.textContent=`${index+1} - ${theme[0]}`;button.onclick=()=>select(index);nav.append(button)});
+function select(index){selected=(index+themes.length)%themes.length;const [name,file,description]=themes[selected];const reference=`../../../design/concepts-2026-10-26/${file}`;const actual=`${String(selected+1).padStart(2,'0')}-${name.toLowerCase()}-guest-home.png`;document.getElementById('reference').src=reference;document.getElementById('reference').alt=`${name}: approved generated concept`;document.getElementById('actual').src=actual;document.getElementById('actual').alt=`${name}: actual Sony guest Home`;document.getElementById('reference-link').href=reference;document.getElementById('actual-link').href=actual;document.getElementById('reference-label').textContent=`${name} - approved generated concept`;document.getElementById('actual-label').textContent=`${name} - actual Sony capture`;document.getElementById('description').textContent=description;[...nav.children].forEach((button,i)=>button.setAttribute('aria-pressed',String(i===selected)))}
+document.addEventListener('keydown',event=>{if(event.altKey||event.ctrlKey||event.metaKey)return;let next;if(/^[1-6]$/.test(event.key))next=Number(event.key)-1;else if(event.key==='ArrowLeft')next=selected-1;else if(event.key==='ArrowRight')next=selected+1;else return;event.preventDefault();select(next)});select(0);
+</script></body></html>

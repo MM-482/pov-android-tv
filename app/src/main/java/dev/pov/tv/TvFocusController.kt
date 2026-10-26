@@ -1,7 +1,6 @@
 package dev.pov.tv
 
 import android.graphics.Rect
-import android.view.FocusFinder
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ScrollView
@@ -36,8 +35,7 @@ internal class TvFocusController(
     }
 
     fun next(direction: Int): View? = body.findFocus()?.let { focused ->
-        TvChoiceList.nextFrom(focused, direction)
-            ?: FocusFinder.getInstance().findNextFocus(body, focused, direction)?.takeIf { it in leaves() }
+        TvChoiceList.findNext(body, focused, direction)?.takeIf { it in leaves() }
     }
 
     fun first(): Boolean {

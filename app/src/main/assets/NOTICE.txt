@@ -4,10 +4,14 @@ Standalone app made by Mark Mateo. Based on the original POV Kodi add-on by kodi
 
 POV visual identity and original fanart: kodifitzwell, sourced from POV 6.10.06 at https://github.com/kodifitzwell/repo (revision 2ea2eb7f330988ade16d388d3832b8e4b60c6b24). The selected launcher icon is generated design concept 3, created using the original POV icon as its reference. The upstream add-on manifest declares GNU GPL version 3. The original author is not affiliated with this Android port.
 
+The transparent in-app POV wordmark is a generated cutout based on that selected icon. The six October 26, 2026 design-preview images are generated concepts using the same POV visual identity. They are picker references, not screenshots of the running application; the interface renders native controls and live catalog artwork separately.
+
 The new Android application source is provided under GNU GPL version 3. The accompanying source distribution includes the license text. Original assets are retained with their attribution. No upstream default application credentials are included in this application.
 
 AndroidX Media3 - Android Open Source Project, Apache License 2.0. https://github.com/androidx/media
 Kotlin standard library - JetBrains, Apache License 2.0. https://github.com/JetBrains/kotlin
+
+Inter - the Inter Project Authors; Cormorant Garamond - the Cormorant Project Authors. Both bundled font families use the SIL Open Font License, Version 1.1. Font source attribution is in FONT_NOTICES.md beside this notice. The original licenses and copyright notices are included as fonts/Inter-OFL.txt and fonts/CormorantGaramond-OFL.txt.
 
 Catalog metadata and artwork are supplied at runtime by Cinemeta / their respective rights holders. https://github.com/Stremio/stremio-addons
 Anime discovery metadata and artwork: Kitsu, https://kitsu.app/ and https://hummingbird-me.github.io/api-docs/ . Exact IMDb mapping fallback: Anime Kitsu, an independent metadata service by TheBeastLT, https://github.com/TheBeastLT/stremio-kitsu-anime . No provider source code or full mapping database is incorporated. These services and original artwork rights remain with their respective owners; this app is independent of them.
@@ -17,3 +21,5 @@ TorBox, Trakt, Kodi and other names belong to their respective owners. This app 
 
 Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
 GNU GPL version 3: https://www.gnu.org/licenses/gpl-3.0.txt
+
+Embedded VideoLAN LibVLC Android 3.7.7 (org.videolan.android:libvlc-all), Copyright VideoLAN and VLC authors. The Java/JNI bindings are licensed under LGPL 2.1 or later; see the complete LibVLC-LICENSE.txt packaged beside this notice. Native codecs, contrib libraries, assets, and the C++ runtime retain their respective licenses, including GPL components where enabled. Official binding source/build commit: https://code.videolan.org/videolan/libvlcjni/-/tree/0b8dc65efb203c86a0476bc337ddd99ecf1c0ef6 . Its native source recipe pins VLC 84177b2273abc5c4300234e6e18b55a4d2dd5a03 and the JNI repository's patches. Artifact, corresponding source/build provenance, and replacement/relinking instructions: docs/LIBVLC.md in the matching POV source distribution. The Java source JAR alone does not include the complete native corresponding sources. No VideoLAN endorsement is implied.

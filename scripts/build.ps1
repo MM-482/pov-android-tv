@@ -16,7 +16,10 @@ if ($env:GITHUB_ENV) { [System.IO.File]::AppendAllText($env:GITHUB_ENV, "POV_BUI
 New-Item -ItemType Directory -Path $env:GRADLE_USER_HOME -Force | Out-Null
 $env:ANDROID_USER_HOME = Join-Path $toolRoot 'android-home'
 Remove-Item -LiteralPath Env:\ANDROID_PREFS_ROOT -ErrorAction SilentlyContinue
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+# An unmatched quote in a user PATH entry breaks Java's generated test-worker argfile.
+# Normalize only this build process; leave the user's saved Windows PATH untouched.
+$buildProcessPath = ($env:PATH -split ';' | ForEach-Object { $_.Replace('"', '').Trim() } | Where-Object { $_ }) -join ';'
+$env:PATH = "$env:JAVA_HOME\bin;$buildProcessPath"
 Push-Location -LiteralPath $projectRoot
 try {
     & $gradlePath @Tasks "-PpovBuildRoot=$env:POV_BUILD_OUTPUT" --console=plain --no-daemon --project-cache-dir (Join-Path $buildCacheRoot 'project-cache')

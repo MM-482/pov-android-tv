@@ -44,6 +44,10 @@
                 android:contentDescription="Play or pause" android:padding="12dp"
                 android:background="@drawable/pov_player_button" android:focusable="true" android:layout_marginEnd="4dp"
                 android:nextFocusUp="@id/exo_progress" />
+            <ImageButton android:id="@+id/pov_stop" android:layout_width="40dp" android:layout_height="40dp"
+                android:contentDescription="Stop playback" android:padding="10dp" android:src="@drawable/pov_ic_stop"
+                android:background="@drawable/pov_player_button" android:focusable="true" android:layout_marginEnd="4dp"
+                android:nextFocusUp="@id/exo_progress" />
             <ImageButton android:id="@id/exo_ffwd" android:layout_width="40dp" android:layout_height="40dp"
                 android:contentDescription="Forward 10 seconds" android:padding="10dp"
                 android:background="@drawable/pov_player_button" android:focusable="true" android:layout_marginEnd="10dp"

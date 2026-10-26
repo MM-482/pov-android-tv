@@ -6,6 +6,9 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.ui.PlayerControlView
 import androidx.media3.ui.PlayerView
 import org.junit.Assert.*
@@ -25,7 +28,82 @@ import java.time.Duration
 class PlayerControlVisibilityTest {
     private val chromeIds = listOf(androidx.media3.ui.R.id.exo_progress, androidx.media3.ui.R.id.exo_play_pause,
         androidx.media3.ui.R.id.exo_rew, androidx.media3.ui.R.id.exo_ffwd, R.id.pov_audio,
-        R.id.pov_subtitles, R.id.pov_boost, R.id.pov_browse, R.id.pov_loading_spinner)
+        R.id.pov_subtitles, R.id.pov_boost, R.id.pov_browse, R.id.pov_stop, R.id.pov_loading_spinner)
+
+    @Test fun `activity consumed directional interaction resets native and app playing hide deadlines`() {
+        val owner = Robolectric.buildActivity(Activity::class.java).setup().visible()
+        val activity = owner.get()
+        val view = LayoutInflater.from(activity).inflate(R.layout.pov_player, null, false) as PlayerView
+        activity.setContentView(view)
+        val playing = object : SimpleBasePlayer(Looper.getMainLooper()) {
+            override fun getState(): State = State.Builder()
+                .setAvailableCommands(Player.Commands.Builder().addAll(Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
+                    Player.COMMAND_GET_TIMELINE, Player.COMMAND_GET_TRACKS).build())
+                .setPlaylist(listOf(MediaItemData.Builder("playing-fixture")
+                    .setMediaItem(MediaItem.fromUri("https://media.example/public-fixture.mkv"))
+                    .setDurationUs(120_000_000).build()))
+                .setPlaybackState(Player.STATE_READY)
+                .setPlayWhenReady(true, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+                .build()
+        }
+        view.player = playing
+        val binding = PlayerControlVisibility.bind(view)
+        try {
+            view.measure(View.MeasureSpec.makeMeasureSpec(960, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(540, View.MeasureSpec.EXACTLY))
+            view.layout(0, 0, 960, 540)
+            view.controllerShowTimeoutMs = 1_000
+            binding.show()
+            assertTrue(playing.isPlaying)
+            assertTrue(view.isControllerFullyVisible)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900))
+            // This is PlayerActivity's row-to-timeline path: Activity consumes
+            // the key, so PlayerView.dispatchKeyEvent never refreshes its timer.
+            binding.userInteraction()
+            view.findViewById<View>(androidx.media3.ui.R.id.exo_progress).requestFocus()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(101))
+            assertTrue("The original Media3 deadline must not hide controls after fresh input", view.isControllerFullyVisible)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900))
+            assertFalse("Fresh input must postpone, rather than disable, automatic hiding", view.isControllerFullyVisible)
+            chromeIds.forEach { assertFalse("Chrome leaked after the refreshed timeout: $it", rendered(view.findViewById(it))) }
+        } finally { binding.release(); view.player = null; owner.pause().stop().destroy() }
+    }
+
+    @Test fun `caption viewport clears visible controller follows its height and restores original padding`() {
+        val owner = Robolectric.buildActivity(Activity::class.java).setup().visible()
+        val activity = owner.get()
+        val view = LayoutInflater.from(activity).inflate(R.layout.pov_player, null, false) as PlayerView
+        activity.setContentView(view)
+        val subtitles = requireNotNull(view.subtitleView)
+        subtitles.setPadding(3, 4, 5, 6)
+        val binding = PlayerControlVisibility.bind(view)
+        val strip = view.findViewById<View>(R.id.pov_bottom_scrim)
+        fun layout() {
+            view.measure(View.MeasureSpec.makeMeasureSpec(960, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(540, View.MeasureSpec.EXACTLY))
+            view.layout(0, 0, 960, 540)
+        }
+        try {
+            layout(); binding.start(); view.showController(); layout()
+            assertEquals(6 + strip.height + 8, subtitles.paddingBottom)
+            assertTrue("Caption drawable area must end above the playback strip", subtitles.height - subtitles.paddingBottom <= strip.top - 8)
+            assertEquals(3, subtitles.paddingLeft); assertEquals(4, subtitles.paddingTop); assertEquals(5, subtitles.paddingRight)
+            view.hideController()
+            assertEquals(6, subtitles.paddingBottom)
+            view.showController(); layout()
+            assertEquals("Showing again must not accumulate padding", 6 + strip.height + 8, subtitles.paddingBottom)
+            strip.layoutParams = strip.layoutParams.apply { height = 160 }
+            layout()
+            assertEquals(160, strip.height)
+            assertEquals(174, subtitles.paddingBottom)
+            assertTrue(subtitles.height - subtitles.paddingBottom <= strip.top - 8)
+            binding.release()
+            assertEquals(6, subtitles.paddingBottom)
+            strip.layoutParams = strip.layoutParams.apply { height = 180 }
+            layout()
+            assertEquals("Released binding must not change captions on later layouts", 6, subtitles.paddingBottom)
+        } finally { binding.release(); owner.pause().stop().destroy() }
+    }
 
     @Test fun `focused audio action does not pin timeline loading indicator or other controls after timeout`() {
         val owner = Robolectric.buildActivity(Activity::class.java).setup().visible()

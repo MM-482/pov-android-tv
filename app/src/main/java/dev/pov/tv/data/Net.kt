@@ -19,6 +19,7 @@ class ApiException(
     val errorKey: String = "",
     val retryAfterSeconds: Int = 0
 ) : IOException(message)
+data class NetReply(val body: String, val headers: Map<String, String> = emptyMap())
 
 /** Blocking HTTPS client. Call from a worker thread, never the Android main thread. */
 object Net {
@@ -39,6 +40,18 @@ object Net {
         url: String, method: String = "GET", headers: Map<String, String> = emptyMap(),
         body: JSONObject? = null
     ): String = request(url, method, headers, body?.toString()?.toByteArray(Charsets.UTF_8), "application/json; charset=utf-8")
+
+    fun form(url: String, fields: List<Pair<String, String>>, headers: Map<String, String> = emptyMap()): String =
+        request(url, "POST", headers, fields.joinToString("&") { encode(it.first) + "=" + encode(it.second) }
+            .toByteArray(Charsets.UTF_8), "application/x-www-form-urlencoded; charset=utf-8")
+
+    /** Pagination/quota metadata only; authentication and cookie response headers are not exposed. */
+    fun reply(url: String, method: String = "GET", headers: Map<String, String> = emptyMap(), body: JSONObject? = null): NetReply {
+        var metadata: Map<String, String> = emptyMap()
+        val text = request(url, method, headers, body?.toString()?.toByteArray(Charsets.UTF_8), "application/json; charset=utf-8",
+            responseMetadata = { metadata = it })
+        return NetReply(text, metadata)
+    }
 
     internal fun multipart(
         url: String, fields: Map<String, String>, headers: Map<String, String>
@@ -62,7 +75,7 @@ object Net {
 
     private fun request(
         address: String, method: String, headers: Map<String, String>, bytes: ByteArray?, contentType: String,
-        publicMetadata: Boolean = false, redirectsLeft: Int = 5
+        publicMetadata: Boolean = false, redirectsLeft: Int = 5, responseMetadata: ((Map<String, String>) -> Unit)? = null
     ): String {
         val target = try { URL(address) } catch (_: Exception) {
             throw ApiException(0, "The service address is invalid.")
@@ -92,6 +105,10 @@ object Net {
                 connection.outputStream.use { it.write(bytes) }
             }
             val status = connection.responseCode
+            if (status in 200..299 && responseMetadata != null) {
+                responseMetadata(listOf("X-Next-Cursor", "X-Has-More", "X-Total-Items", "X-RateLimit-Limit", "X-RateLimit-Remaining",
+                    "X-RateLimit-Reset", "Retry-After").mapNotNull { name -> connection.getHeaderField(name)?.let { name.lowercase(Locale.ROOT) to it } }.toMap())
+            }
             if (publicMetadata && status in setOf(301, 302, 303, 307, 308)) {
                 val next = publicMetadataRedirect(target, connection.getHeaderField("Location"), redirectsLeft)
                 connection.disconnect()

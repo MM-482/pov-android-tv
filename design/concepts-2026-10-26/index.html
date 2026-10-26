@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>POV — Six new visual concepts</title>
+  <style>
+    :root{color-scheme:dark;--bg:#101211;--surface:#191c1a;--surface-high:#222722;--line:#353c35;--ink:#f1f4ed;--muted:#afb8ad;--accent:#d7f3ac;--radius:18px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at 5% 0%,#26321f66,transparent 44%),var(--bg);color:var(--ink);font-family:Inter,"Segoe UI",Arial,sans-serif;line-height:1.5}button,select{font:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button{color:inherit}button,a,select{touch-action:manipulation}button{cursor:pointer}a{color:var(--ink)}button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:5px}button:disabled{cursor:default;opacity:.5}[hidden]{display:none!important}.skip{position:fixed;left:20px;top:12px;z-index:20;padding:10px 16px;background:var(--accent);color:#15200d;transform:translateY(-170%)}.skip:focus{transform:none}.wrap{width:min(1440px,100% - 80px);margin-inline:auto}
+    .masthead{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:30px 0;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:16px}.brand-mark{font-size:27px;letter-spacing:-2px;font-weight:850}.brand-rule{height:23px;width:1px;background:var(--line)}.eyebrow{text-transform:uppercase;font-size:11px;font-weight:650;letter-spacing:2px;color:var(--muted)}.back{font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:10px}.back:hover{text-decoration:underline;text-underline-offset:5px}.back span{color:var(--accent);font-size:18px}
+    .intro{display:flex;align-items:flex-end;justify-content:space-between;gap:35px;padding:46px 0 34px}.intro h1{font-size:clamp(30px,4vw,51px);line-height:1.13;letter-spacing:-1.8px;margin:9px 0 0;font-weight:650}.intro-copy{max-width:370px;color:var(--muted);font-size:14px;margin:0 0 4px}.intro-copy strong{color:var(--ink);font-weight:500}.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:8px;vertical-align:2px}
+    .study{border:1px solid var(--line);border-radius:var(--radius);background:#151815;overflow:hidden;box-shadow:0 22px 70px #0003}.study-bar{min-height:88px;padding:19px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line)}.selected-label{display:flex;align-items:center;gap:18px}.counter{color:var(--accent);font-size:13px;letter-spacing:1px;font-variant-numeric:tabular-nums}.selected-label h2{font-size:21px;font-weight:600;letter-spacing:-.4px;margin:0}.selected-label p{color:var(--muted);font-size:12px;margin:1px 0 0}.compare-button{background:transparent;border:1px solid #596350;border-radius:100px;padding:10px 16px;font-size:12px;display:flex;align-items:center;gap:9px;white-space:nowrap}.compare-button:hover{background:var(--surface-high);border-color:var(--accent)}.compare-button[aria-expanded=true]{background:var(--accent);color:#192310;border-color:var(--accent)}.compare-icon{display:grid;grid-template-columns:5px 5px;gap:3px}.compare-icon i{border:1px solid currentColor;width:5px;height:12px;border-radius:1px}
+    figure{margin:0}.preview-image{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;background:#080a08}.single-image{max-height:76vh}.image-footer{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:13px 24px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}.image-footer .status{color:var(--accent)}.image-link{text-decoration:none;color:var(--muted);white-space:nowrap}.image-link:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}.comparison-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding:16px 24px;border-bottom:1px solid var(--line)}.comparison-controls p{font-size:12px;color:var(--muted);margin:0}.select-field{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}select{color:var(--ink);background:var(--surface-high);border:1px solid #586450;border-radius:7px;padding:8px 30px 8px 10px;max-width:100%}.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}.compare-grid figure{min-width:0;background:#111411}.compare-caption{padding:13px 17px;font-size:12px;display:flex;align-items:center;gap:10px}.compare-caption .number{color:var(--accent);font-variant-numeric:tabular-nums}.compare-caption .description{color:var(--muted)}
+    .choices-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:29px 0 16px}.choices-heading h2{font-size:12px;font-weight:600;letter-spacing:.4px;margin:0}.keyboard-help{color:var(--muted);font-size:11px;margin:0;display:flex;align-items:center;gap:5px}kbd{font:inherit;border:1px solid #485142;border-radius:4px;min-width:22px;padding:1px 5px;text-align:center;color:#d3dccb}.choices{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:13px}.choice{display:block;position:relative;text-align:left;width:100%;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;transition:border-color .16s,transform .16s,background .16s}.choice:hover{border-color:#839571;background:#242b20;transform:translateY(-3px)}.choice[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.choice img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#090b09;opacity:.76;transition:opacity .16s}.choice:hover img,.choice[aria-pressed=true] img{opacity:1}.choice-text{display:flex;align-items:flex-start;gap:10px;padding:13px 12px 15px}.choice-number{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:20px}.choice[aria-pressed=true] .choice-number{color:var(--accent)}.choice-title{display:block;font-size:13px;font-weight:600;letter-spacing:-.1px}.choice-subtitle{display:block;color:var(--muted);font-size:10px;line-height:1.35;margin-top:3px}.selected-dot{position:absolute;right:9px;top:9px;display:none;width:19px;height:19px;align-items:center;justify-content:center;border-radius:50%;background:var(--accent);color:#1b2910;font-size:13px;font-weight:700;box-shadow:0 1px 5px #0007}.choice[aria-pressed=true] .selected-dot{display:flex}
+    .closing{display:flex;align-items:center;justify-content:space-between;gap:25px;margin:30px 0 34px;padding-top:22px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}.closing p{margin:0}.closing .edition{white-space:nowrap;letter-spacing:1px;font-size:10px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}noscript p{padding:15px;border:1px solid var(--line);border-radius:8px;color:var(--muted)}
+    @media(min-width:1700px){.wrap{width:min(1540px,100% - 110px)}}@media(max-width:1000px){.wrap{width:calc(100% - 44px)}.choices{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.choice-title{font-size:14px}.choice-subtitle{font-size:11px}.intro{padding-top:32px;gap:25px}.intro-copy{max-width:300px}.choice-text{padding:13px 15px}.compare-grid .description{display:none}}@media(max-width:640px){.wrap{width:calc(100% - 28px)}.masthead{padding:21px 0}.brand{gap:10px}.brand-rule{display:none}.brand .eyebrow{display:none}.back{font-size:12px}.intro{display:block;padding:28px 0 24px}.intro h1{letter-spacing:-1px}.intro-copy{margin-top:17px;max-width:100%;font-size:13px}.study-bar{padding:15px;min-height:80px;gap:10px}.selected-label{gap:11px}.selected-label h2{font-size:18px}.selected-label p{font-size:11px}.counter{font-size:11px}.compare-button{font-size:11px;padding:9px 11px}.image-footer{padding:11px 14px;font-size:10px}.image-footer .status{display:none}.choices-heading{padding-top:25px;align-items:flex-start;flex-direction:column;gap:9px}.choices{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.choice-text{padding:11px;gap:9px}.choice-title{font-size:13px}.choice-subtitle{font-size:10px}.comparison-controls{padding:14px}.select-field{flex-wrap:wrap}.compare-caption{padding:10px;font-size:11px;gap:7px}.compare-grid{grid-template-columns:1fr}.compare-grid .preview-image{max-height:55vh}.compare-grid .description{display:inline}.closing{align-items:flex-start;flex-direction:column;gap:9px;margin-top:25px}.closing .edition{font-size:9px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.choice,.choice img{transition:none}.choice:hover{transform:none}}@media(forced-colors:active){.choice[aria-pressed=true]{outline:2px solid Highlight}.selected-dot{forced-color-adjust:none}.preview-image,.choice img{forced-color-adjust:none}.study,.choice{border-color:CanvasText}}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#concept-viewer">Skip to concept viewer</a>
+  <div class="wrap">
+    <header class="masthead">
+      <div class="brand" aria-label="POV design study"><span class="brand-mark">POV<span style="color:var(--accent)">.</span></span><span class="brand-rule" aria-hidden="true"></span><span class="eyebrow">The next view</span></div>
+      <a class="back" href="../index.html"><span aria-hidden="true">↗</span> Original concepts</a>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div><div class="eyebrow"><span class="dot" aria-hidden="true"></span>Android TV · Design study 02</div><h1 id="page-title">Six directions.<br>One POV.</h1></div>
+        <p class="intro-copy">Explore a different feeling for your big screen. <strong>These are generated design concepts, not installed app screenshots.</strong> Select a direction or compare two together.</p>
+      </section>
+
+      <section id="concept-viewer" class="study" aria-labelledby="selected-title" tabindex="-1">
+        <div class="study-bar">
+          <div class="selected-label"><span id="selected-number" class="counter">01 / 06</span><div><h2 id="selected-title">Glass</h2><p id="selected-description">Apple TV inspired</p></div></div>
+          <button id="compare-toggle" class="compare-button" type="button" aria-expanded="false" aria-controls="comparison-view" disabled><span class="compare-icon" aria-hidden="true"><i></i><i></i></span><span id="compare-button-label">Compare two</span></button>
+        </div>
+
+        <figure id="single-view"><img id="selected-image" class="preview-image single-image" src="01-glass-apple-tv.png" alt="Generated Glass design concept for POV on Android TV, inspired by Apple TV."></figure>
+
+        <div id="comparison-view" hidden>
+          <div class="comparison-controls">
+            <p>Thumbnail choices change the first design.</p>
+            <div class="select-field"><label for="compare-select">Compare with</label><select id="compare-select">
+              <option value="0" disabled>01 · Glass</option><option value="1" selected>02 · Essential</option><option value="2">03 · Premiere</option><option value="3">04 · Atelier</option><option value="4">05 · Horizon</option><option value="5">06 · Studio</option>
+            </select></div>
+          </div>
+          <div class="compare-grid">
+            <figure><img id="comparison-first-image" class="preview-image" src="01-glass-apple-tv.png" alt="Generated Glass design concept for POV on Android TV, inspired by Apple TV."><figcaption class="compare-caption"><span id="comparison-first-number" class="number">01</span><span><strong id="comparison-first-title">Glass</strong><span id="comparison-first-description" class="description"> · Apple TV inspired</span></span></figcaption></figure>
+            <figure><img id="comparison-second-image" class="preview-image" src="02-essential-classic.png" alt="Generated Essential design concept for POV on Android TV, a familiar classic layout."><figcaption class="compare-caption"><span id="comparison-second-number" class="number">02</span><span><strong id="comparison-second-title">Essential</strong><span id="comparison-second-description" class="description"> · Familiar classic</span></span></figcaption></figure>
+          </div>
+        </div>
+
+        <div class="image-footer"><span>Generated concept <span class="status">· Visual exploration</span></span><a id="image-link" class="image-link" href="01-glass-apple-tv.png" target="_blank" rel="noopener">Open selected image <span aria-hidden="true">↗</span></a></div>
+      </section>
+
+      <section aria-labelledby="choices-title">
+        <div class="choices-heading"><h2 id="choices-title">Choose a direction</h2><p class="keyboard-help" id="keyboard-help"><kbd>1</kbd>–<kbd>6</kbd> to select <span aria-hidden="true">·</span> <kbd>←</kbd><kbd>→</kbd> to browse</p></div>
+        <div class="choices" role="group" aria-label="Six design concepts" aria-describedby="keyboard-help">
+          <button class="choice" type="button" data-concept="0" aria-pressed="true" aria-label="01 Glass — Apple TV inspired"><img src="01-glass-apple-tv.png" alt="" loading="lazy"><span class="selected-dot" aria-hidden="true">✓</span><span class="choice-text"><span class="choice-number">01</span><span><span class="choice-title">Glass</span><span class="choice-subtitle">Apple TV inspired</span></span></span></button>
+          <button class="choice" type="button" data-concept="1" aria-pressed="false" aria-label="02 Essential — familiar classic"><img src="02-essential-classic.png" alt="" loading="lazy"><span class="selected-dot" aria-hidden="true">✓</span><span class="choice-text"><span class="choice-number">02</span><span><span class="choice-title">Essential</span><span class="choice-subtitle">Familiar classic</span></span></span></button>
+          <button class="choice" type="button" data-concept="2" aria-pressed="false" aria-label="03 Premiere — cinematic"><img src="03-premiere-cinematic.png" alt="" loading="lazy"><span class="selected-dot" aria-hidden="true">✓</span><span class="choice-text"><span class="choice-number">03</span><span><span class="choice-title">Premiere</span><span class="choice-subtitle">Cinematic</span></span></span></button>
+          <button class="choice" type="button" data-concept="3" aria-pressed="false" aria-label="04 Atelier — light minimalist"><img src="04-atelier-light.png" alt="" loading="lazy"><span class="selected-dot" aria-hidden="true">✓</span><span class="choice-text"><span class="choice-number">04</span><span><span class="choice-title">Atelier</span><span class="choice-subtitle">Light minimalist</span></span></span></button>
+          <button class="choice" type="button" data-concept="4" aria-pressed="false" aria-label="05 Horizon — futuristic"><img src="05-horizon-futuristic.png" alt="" loading="lazy"><span class="selected-dot" aria-hidden="true">✓</span><span class="choice-text"><span class="choice-number">05</span><span><span class="choice-title">Horizon</span><span class="choice-subtitle">Futuristic</span></span></span></button>
+          <button class="choice" type="button" data-concept="5" aria-pressed="false" aria-label="06 Studio — watching dashboard"><img src="06-studio-dashboard.png" alt="" loading="lazy"><span class="selected-dot" aria-hidden="true">✓</span><span class="choice-text"><span class="choice-number">06</span><span><span class="choice-title">Studio</span><span class="choice-subtitle">Watching dashboard</span></span></span></button>
+        </div>
+        <noscript><p>Enable JavaScript to switch previews and compare designs. You can still open each image directly: <a href="01-glass-apple-tv.png">Glass</a>, <a href="02-essential-classic.png">Essential</a>, <a href="03-premiere-cinematic.png">Premiere</a>, <a href="04-atelier-light.png">Atelier</a>, <a href="05-horizon-futuristic.png">Horizon</a>, <a href="06-studio-dashboard.png">Studio</a>.</p></noscript>
+      </section>
+      <p id="selection-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+    </main>
+    <footer class="closing"><p>A visual starting point for the next POV interface. No installation or account connection is needed to view this gallery.</p><span class="edition">CONCEPT EDITION · 26 OCT 2026</span></footer>
+  </div>
+  <script>
+    (() => {
+      'use strict';
+      const concepts = [
+        { title:'Glass', description:'Apple TV inspired', file:'01-glass-apple-tv.png', alt:'Generated Glass design concept for POV on Android TV, inspired by Apple TV.' },
+        { title:'Essential', description:'Familiar classic', file:'02-essential-classic.png', alt:'Generated Essential design concept for POV on Android TV, a familiar classic layout.' },
+        { title:'Premiere', description:'Cinematic', file:'03-premiere-cinematic.png', alt:'Generated Premiere design concept for POV on Android TV, with a cinematic presentation.' },
+        { title:'Atelier', description:'Light minimalist', file:'04-atelier-light.png', alt:'Generated Atelier design concept for POV on Android TV, with a light minimalist presentation.' },
+        { title:'Horizon', description:'Futuristic', file:'05-horizon-futuristic.png', alt:'Generated Horizon design concept for POV on Android TV, with a futuristic presentation.' },
+        { title:'Studio', description:'Watching dashboard', file:'06-studio-dashboard.png', alt:'Generated Studio design concept for POV on Android TV, with a watching dashboard.' }
+      ];
+      const byId = id => document.getElementById(id);
+      const choices = Array.from(document.querySelectorAll('[data-concept]'));
+      const compareSelect = byId('compare-select');
+      const compareToggle = byId('compare-toggle');
+      let selected = 0, secondary = 1, comparing = false;
+      const number = index => String(index + 1).padStart(2, '0');
+      function setImage(id, concept) { const image = byId(id); image.src = concept.file; image.alt = concept.alt; }
+      function renderComparison() {
+        if (selected === secondary) secondary = (selected + 1) % concepts.length;
+        Array.from(compareSelect.options).forEach(option => { option.disabled = Number(option.value) === selected; });
+        compareSelect.value = String(secondary);
+        [['first', selected], ['second', secondary]].forEach(([side, index]) => {
+          const concept = concepts[index];
+          setImage('comparison-' + side + '-image', concept);
+          byId('comparison-' + side + '-number').textContent = number(index);
+          byId('comparison-' + side + '-title').textContent = concept.title;
+          byId('comparison-' + side + '-description').textContent = ' · ' + concept.description;
+        });
+      }
+      function announce() {
+        byId('selection-status').textContent = comparing
+          ? 'Comparing ' + concepts[selected].title + ' and ' + concepts[secondary].title + '.'
+          : 'Selected concept ' + number(selected) + ': ' + concepts[selected].title + ', ' + concepts[selected].description + '.';
+      }
+      function select(index, moveFocus = false) {
+        selected = (index + concepts.length) % concepts.length;
+        const concept = concepts[selected];
+        byId('selected-number').textContent = number(selected) + ' / 06';
+        byId('selected-title').textContent = concept.title;
+        byId('selected-description').textContent = concept.description;
+        setImage('selected-image', concept);
+        const imageLink = byId('image-link'); imageLink.href = concept.file;
+        imageLink.setAttribute('aria-label', 'Open ' + concept.title + ' concept image in a new tab');
+        choices.forEach((choice, position) => choice.setAttribute('aria-pressed', String(position === selected)));
+        renderComparison(); announce();
+        if (moveFocus) choices[selected].focus({ preventScroll: true });
+      }
+      choices.forEach((choice, index) => choice.addEventListener('click', () => select(index)));
+      compareToggle.disabled = false;
+      compareToggle.addEventListener('click', () => {
+        comparing = !comparing;
+        byId('single-view').hidden = comparing;
+        byId('comparison-view').hidden = !comparing;
+        compareToggle.setAttribute('aria-expanded', String(comparing));
+        byId('compare-button-label').textContent = comparing ? 'Single view' : 'Compare two';
+        renderComparison(); announce();
+      });
+      compareSelect.addEventListener('change', () => { secondary = Number(compareSelect.value); renderComparison(); announce(); });
+      document.addEventListener('keydown', event => {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.defaultPrevented) return;
+        const target = event.target;
+        if (target instanceof Element && (target.closest('input, textarea, select') || target.closest('[contenteditable]:not([contenteditable="false"])'))) return;
+        let next;
+        if (/^[1-6]$/.test(event.key)) next = Number(event.key) - 1;
+        else if (event.key === 'ArrowRight') next = selected + 1;
+        else if (event.key === 'ArrowLeft') next = selected - 1;
+        else return;
+        event.preventDefault();
+        select(next, target instanceof Element && Boolean(target.closest('[data-concept]')));
+      });
+      // Images and interactions stay local; this page makes no network requests.
+      byId('image-link').setAttribute('aria-label', 'Open Glass concept image in a new tab');
+    })();
+  </script>
+</body>
+</html>

@@ -88,4 +88,48 @@ class PlaybackStoreTest {
         assertTrue(history.pending().isEmpty())
         assertEquals(90_000L, history.resume("movie"))
     }
+
+    @Test fun `dismissed title stays hidden when active playback saves another position`() {
+        val history = PlaybackStore(context)
+        history.save("movie", movie.title, movie, 90_000, 900_000)
+        history.hideFromContinueWatching("movie", movie)
+        PlaybackStore(context).save("movie", movie.title, movie, 120_000, 900_000)
+        assertTrue(history.continueWatching().isEmpty())
+        assertEquals(120_000L, history.resume("movie"))
+    }
+
+    @Test fun `hiding a title preserves Trakt queue and local resume`() {
+        val history = PlaybackStore(context)
+        history.save("movie", movie.title, movie, 90_000, 900_000)
+        history.queue(movie, 10.0, "pause")
+        history.hideFromContinueWatching("movie", movie)
+        assertEquals(1, history.pending().size)
+        assertEquals(90_000L, history.resume("movie"))
+        assertTrue(history.isHidden(identity = movie.copy(title = "New title")))
+    }
+
+    @Test fun `new intentional play restores dismissed title across store instances`() {
+        val history = PlaybackStore(context)
+        history.save("movie", movie.title, movie, 90_000, 900_000)
+        history.hideFromContinueWatching("movie", movie)
+        PlaybackStore(context).beginPlayback("movie", movie)
+        assertFalse(history.isHidden("movie", movie))
+        assertEquals(1, history.continueWatching().size)
+    }
+
+    @Test fun `episode dismissal is scoped to one episode and works for remote entries`() {
+        val history = PlaybackStore(context)
+        val episode = movie.copy(type = "series", season = 1, episode = 2)
+        history.hideFromContinueWatching("", episode)
+        assertTrue(PlaybackStore(context).isHidden(identity = episode))
+        assertFalse(history.isHidden(identity = episode.copy(episode = 3)))
+        assertFalse(history.isHidden(identity = movie))
+    }
+
+    @Test fun `completed titles never enter Continue Watching`() {
+        val history = PlaybackStore(context)
+        history.save("done", movie.title, movie, 899_000, 900_000)
+        history.save("invalid", movie.title, movie, -1, 900_000)
+        assertTrue(history.continueWatching().isEmpty())
+    }
 }

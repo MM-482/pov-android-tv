@@ -2,9 +2,30 @@
 
 This checklist records technical publication requirements for the approved POV Standalone 0.2.2 preview. The owner has approved publication to [MM-482/pov-android-tv](https://github.com/MM-482/pov-android-tv) and the [v0.2.2-preview release](https://github.com/MM-482/pov-android-tv/releases/tag/v0.2.2-preview). These checks preserve the reviewed source, artifact identity, credits, privacy safeguards, and validation limits; they are not an additional owner-approval step.
 
-## Current local checkpoint
+The source checkout can contain a newer working preview than this published release. The 0.3.0 working changes have separate [setup instructions](INSTALL_0.3.0.md), [change notes](RELEASE_NOTES_0.3.0.md), and an [audit record](AUDIT_0.3.0.md). This document's 0.2.2 test/device results do not validate those newer changes or authorize publishing them.
 
-The current source is **0.2.2-preview** (`versionCode 5`). The software-gain, player-handoff, and video-compatibility revision passed **227 unit tests**, with **0 failures, 0 errors, and 0 skipped**. The debug APK assembled successfully and lint reported **0 errors / 56 warnings**. The source now includes a compact 124 dp integrated bottom player controller, every exposed audio/subtitle track with unknown/unsupported explanations, separate Automatic mode and actual selected state, and explicit source/multi-video file choices with stable IDs.
+## Working 0.3.0 source-list checkpoint
+
+- [x] Build the current `bd45a3…69e0` APK, version 0.3.0-preview / code 6. The final unit run passed 418 tests across 54 suites with no failures/errors/skips; latest production-code lint reports 0 errors / 57 warnings. The later change was unit-test coverage only.
+- [x] Verify the long-list fix on Sony Android 8: 70 rows/two complete round trips, ordered header entry/exit, five middle sources/25 middle files, fully visible focused cards, exact Back restoration, and unchanged history. The baseline jumped to index 59 of 70; the earlier seven-row fixture did not expose it. This is offline source-choice evidence, not authenticated transfer/playback.
+- [x] Verify current bd45 v2 signing with one signer and the retained certificate, installed bytes matching the build, and cleanup against a fresh encrypted-account fingerprint captured immediately before this update. The temporary audit package was removed and normal POV launched; no account/history contents were exported. This does not compare account bytes with an older pre-0.3 session.
+- [x] Retain exact evidence scopes: full Media3/VLC/Continue Watching checks belong to `7abc58…ee15`; the six reviewed theme captures belong to `582cec…6273`. Full player paths have not been rerun on bd45.
+- [x] Record the completed historical archive scan: `7abc58…ee15` APK / `56aecc…05a0` source ZIP, 484 APK entries, 44,263 DEX strings, 221 allowlisted source entries, zero detector findings. It predates the source-list fix.
+- [x] Package the bd45 APK with its refreshed matching source ZIP and external checksums, then scan those exact artifacts: 484 APK entries, 44,283 DEX strings, 222 allowlisted source entries, zero detector findings. This is a bounded static check without image OCR; selected images were reviewed separately. The historical archive scan remains separately scoped.
+
+The [0.3.0 audit](AUDIT_0.3.0.md) records the full APK digests and remaining validation boundaries. This checkpoint does not publish a release. The native LibVLC source/contrib work below remains open.
+
+## Working 0.3.0 LibVLC source checkpoint
+
+- [x] Identify and inspect the exact official JNI and native-base repository archives. [LIBVLC.md](LIBVLC.md#inspected-pinned-source-archives) records their direct source locations, inspected byte counts, SHA-256 hashes, and the JNI recipe's 20-patch set.
+- [ ] Establish and retain the complete external contrib source set, relevant patches/checksums/licenses, and actual configuration corresponding to all four native ABIs in the distributed AAR. The inspected VLC archive contains 117 contrib recipes and zero external contrib source archives; the two pinned repository archives alone do not complete this item.
+- [ ] Verify a usable native rebuild and replacement/relinking route with the retained source inputs, and record the actual result for the binary being distributed.
+
+Broad publication of the new VLC-enabled build remains subject to completing and checking this native source/contrib work. The archive inspection is source-provenance evidence; it does not establish complete source correspondence or a legal conclusion about redistribution.
+
+## Published 0.2.2 checkpoint
+
+The published checkpoint is **0.2.2-preview** (`versionCode 5`). The software-gain, player-handoff, and video-compatibility revision passed **227 unit tests**, with **0 failures, 0 errors, and 0 skipped**. The debug APK assembled successfully and lint reported **0 errors / 56 warnings**. That source includes a compact 124 dp integrated bottom player controller, every exposed audio/subtitle track with unknown/unsupported explanations, separate Automatic mode and actual selected state, and explicit source/multi-video file choices with stable IDs.
 
 The combined Sony Android 8 public-sample playback audit passed on the 227-test build. The final offline source/file fixture also passed seven rows in both D-pad directions with every focused row fully visible, five middle-source openings, 25 middle-file selections, exact Back restoration, and unchanged local history. The fixture uses synthetic choices and does not prove authenticated transfer or playback. Record exact artifact identities, scans, and exercised device results in [AUDIT_0.2.2.md](AUDIT_0.2.2.md); [RELEASE_NOTES_0.2.2.md](RELEASE_NOTES_0.2.2.md) is the current change-note file. Do not generalize this TV/sample to every device, codec, HDR, HDMI route, or account workflow.
 
