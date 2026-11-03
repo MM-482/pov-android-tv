@@ -65,6 +65,18 @@ class SubtitleSafetyTest {
             allowedHosts = setOf("api.opensubtitles.com", "vip-api.opensubtitles.com"))) }
         assertEquals(1, calls)
     }
+    @Test fun publicAddonDownloadsFollowSecureCdnRedirectsWithoutAllowingAccountHeaders() {
+        val opened = mutableListOf<FakeConnection>()
+        val http = SubtitleHttp { url -> FakeConnection(url, if (opened.isEmpty()) 302 else 200,
+            if (opened.isEmpty()) "https://another-cdn.example/file.srt" else null).also { opened += it } }
+        http.execute(SubtitleRequest("https://addon.example/subtitle", allowedHosts = setOf("addon.example"),
+            download = true, publicDownloadRedirects = true))
+        assertEquals(2, opened.size)
+        assertTrue(opened.none { it.supplied.keys.any { key -> key.equals("Authorization", true) || key.equals("Cookie", true) } })
+        expectFailure { http.execute(SubtitleRequest("https://addon.example/subtitle", headers = mapOf("Authorization" to "private"),
+            allowedHosts = setOf("addon.example"), download = true, publicDownloadRedirects = true)) }
+        assertEquals(2, opened.size)
+    }
     @Test fun unrelatedAndDowngradedDownloadTargetsAreRejectedBeforeRequest() {
         for (address in listOf("http://dl.subdl.com/file", "https://dl.subdl.com.evil.example/file", "https://secret@dl.subdl.com/file", "https://dl.subdl.com:8080/file")) {
             expectFailure { SubtitleHttp.checkedUrl(address, setOf("subdl.com"), true) }

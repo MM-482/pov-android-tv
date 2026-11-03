@@ -23,7 +23,7 @@ import java.util.concurrent.ExecutorService
 
 /** Real Main dispatch/global reveal and asynchronously arriving source cards, including the top action. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [26], qualifiers = "w1920dp-h1080dp-land-mdpi")
+@Config(sdk = [26], qualifiers = "w1920dp-h1080dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class SourceScreenNavigationTest {
     @Test fun `top control enters first stream and all seventy streams traverse without bottom jumps`() {

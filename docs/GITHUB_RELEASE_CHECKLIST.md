@@ -4,6 +4,10 @@ This checklist records technical publication requirements for POV Standalone sou
 
 The 0.3.0 source has separate [setup instructions](INSTALL_0.3.0.md), [change notes](RELEASE_NOTES_0.3.0.md), and an [audit record](AUDIT_0.3.0.md). Updated application source is public in the repository. This document's 0.2.2 test/device results do not validate newer changes; release visibility and asset availability must be recorded from the actual publication result.
 
+## Cameo 0.4.1 candidate
+
+The current source and side-by-side Preview candidate are **0.4.1-preview / versionCode 8**. See the [0.4.1 change notes](RELEASE_NOTES_0.4.1.md) and [validation record](VALIDATION_0.4.1.md) for current artifact identities, 553 passing local tests, 15 native layout renders, and remaining device/account limits. This does not publish a release or replace the original signing key. Historical checkpoints below remain scoped to their named versions.
+
 ## Working 0.3.0 source-list checkpoint
 
 - [x] Build the current `bd45a3…69e0` APK, version 0.3.0-preview / code 6. The final unit run passed 418 tests across 54 suites with no failures/errors/skips; latest production-code lint reports 0 errors / 57 warnings. The later change was unit-test coverage only.
@@ -89,6 +93,8 @@ python scripts/verify-public-artifacts.py `
 ```
 
 This scanner is a separate local review tool, not an Android app or build dependency. Its report must pass for those exact artifacts. It checks detectable strings and archive entries without printing matched secret values, but does not prove every secret absent, perform image OCR, verify APK/source equivalence, or replace manual review. Keep the report in local `verification/`, outside public source exports.
+
+For Cameo 0.4.0, reviewed synthetic network fixtures are classified by exact test-source path and LF-normalized SHA-256. The classification covers only their network-address findings; all credential and archive checks still run. CRLF line endings from a Windows checkout are accepted, but other content changes invalidate the classification and require another source review. Never extend a fixture classification to account data or production configuration. The report records every classified file and its hashes. See [0.4.0 validation](VALIDATION_0.4.0.md#hosted-ci-and-packaging-follow-up).
 
 Before approving contents:
 

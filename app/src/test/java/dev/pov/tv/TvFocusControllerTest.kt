@@ -22,7 +22,7 @@ import org.robolectric.annotation.LooperMode
 
 /** Native attached views: focus must remain on a visible action across several screens. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class TvFocusControllerTest {
     private lateinit var activity: Activity

@@ -404,7 +404,7 @@ class SimklApi internal constructor(
 
     companion object {
         private const val BASE = "https://api.simkl.com"
-        private const val USER_AGENT = "POV-Standalone/0.3"
+        private const val USER_AGENT = "Cameo-Android/0.4"
         private val IMDB_ID = Regex("tt[0-9]{5,12}")
         private val authLock = Any()
         private val tokenLock = Any()

@@ -17,7 +17,7 @@ import java.util.concurrent.ExecutorService
 
 /** Exercises the actual native view tree without starting account or network work. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 class HeroLayoutTest {
     @Test fun `long feature titles cannot shrink or hide the primary action in any hero theme`() {
         for (theme in ThemeSpec.entries.filter { it != ThemeSpec.DASHBOARD }) {

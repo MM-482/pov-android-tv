@@ -33,7 +33,7 @@ class SimklApiTest {
         val api = SimklApi(keys, { url, method, headers, body ->
             assertEquals("POST", method)
             assertTrue(url.contains("client_id=v2-client"))
-            assertTrue(headers["User-Agent"]!!.contains("POV"))
+            assertTrue(headers["User-Agent"]!!.contains("Cameo"))
             if (url.contains("/oauth2/device")) { assertEquals("media:read media:write", body!!.getString("scope")); device }
             else { polls++; assertEquals("urn:ietf:params:oauth:grant-type:device_code", body!!.getString("grant_type")); tokens }
         }, { now }, { epoch })

@@ -1,143 +1,120 @@
-﻿# POV Standalone for Android TV
+# Cameo for Android and Android TV
 
 **Standalone app made by Mark Mateo. Based on the original POV Kodi add-on by [kodifitzwell](https://github.com/kodifitzwell/repo).**
 
-An independent native Android TV app for browsing movies, shows, and anime, selecting sources through your own playback-service accounts, and playing them inside POV. Kodi is not installed, embedded, or required at runtime. This source describes **0.3.0-preview** (`versionCode 6`) for Android TV 8.0 or later. Application source is public in this repository; consult [GitHub releases](https://github.com/MM-482/pov-android-tv/releases) for published APKs and their matching source assets.
+Cameo is a native Android app for browsing movies, shows, and anime, organizing your own videos and saved titles, connecting your playback services, and playing video inside the app. Kodi is not required. This source is **0.4.2-preview** (`versionCode 9`), for Android 8.0 / API 26 and later.
 
-[0.3.0 setup](docs/INSTALL_0.3.0.md) · [Change notes](docs/RELEASE_NOTES_0.3.0.md) · [Validation record](docs/AUDIT_0.3.0.md) · [Privacy](docs/PRIVACY.md) · [LibVLC source/licensing](docs/LIBVLC.md)
+This version extends the Android TV 0.3.0 base to touch devices and foldable windows, and implements features from the supplied **Cameo Windows 0.2.4** source. The regular application's ID remains `dev.pov.tv` so an appropriately signed update can retain existing Android data. A separate **Cameo Preview** build can be installed alongside it. Published downloads and their matching source assets are listed on [GitHub releases](https://github.com/MM-482/pov-android-tv/releases).
 
-## What the 0.3.0 source includes
+[0.4.2 touch navigation and playback fixes](docs/RELEASE_NOTES_0.4.2.md) · [0.4.1 design corrections](docs/RELEASE_NOTES_0.4.1.md) · [0.4.0 feature additions](docs/RELEASE_NOTES_0.4.0.md) · [Feature mapping and limits](docs/CAMEO_ANDROID_PARITY.md) · [Verified build results](docs/VALIDATION_0.4.2.md) · [LibVLC sources and licensing](docs/LIBVLC.md)
 
-- Six selectable native themes: **Glass, Essential, Premiere, Atelier, Horizon, and Studio**. Navigation, title actions, cards, and focus remain real TV controls; catalog artwork, saved progress, and episode identities supply the content.
-- **Media3 or embedded VLC**, selected for the next video. Fullscreen and the in-app mini-player share one playback session. A compact square Stop button sits between Play/Pause and Forward; one Right press from Play/Pause reaches it.
-- Local **Continue Watching** removal through hold-Select or Menu, preserving resume data and external watched history. Intentionally playing the title again restores its eligibility.
-- Preferred-language subtitles, Android document-picker import, and explicit search/download through **OpenSubtitles, SubDL, and SubSource**, using your credentials.
-- Independent playback accounts for **TorBox, Real-Debrid, AllDebrid, Premiumize, Offcloud, and experimental Easynews**, with explicit source and video-version choices.
-- Existing **Trakt** linking, lists, identified playback tracking, and queued updates; independent **MDBList** and **Simkl** library/actions. Automatic MDBList/Simkl reporting is **Off by default** and requires separate consent for each connected account.
-- Movie/show discovery through Cinemeta, a dedicated Kitsu anime section, search/details, selected-season episode lists, and Stremio-compatible source discovery.
+## What this version adds
 
-**Bring your own accounts.** POV supplies no subscriptions, service passwords, account tokens, API keys, Trakt Client ID, or Simkl Client ID. Trakt and Simkl require your own registered public application identifiers. The [setup guide](docs/INSTALL_0.3.0.md) explains these preview requirements.
+- **Phone and foldable layouts:** native touch sizing, scrollable content, and the same five bottom navigation destinations at every touch width, including unfolded and tablet windows. Wider content adapts independently of the menu. Resize and rotation retain navigation state and the shared playback session. TV keeps its remote-oriented layout and ordered DPAD source/file navigation.
+- **Recoverable playback controls:** tapping the video after the controls auto-hide restores a full interaction interval for Media3 and embedded VLC. Touch observation preserves native video taps, button clicks, and scrubbing; touch actions activate on the first tap.
+- **Five reference-based appearances:** Glass, Cinema, Slate, Pearl, and Aurora now follow the supplied November 2 phone and TV concepts, with distinct artwork placement, typography, cards, and navigation. Five independently selectable native launcher icons are available in Blue, Violet, Pearl, Gold, and Mint. Theme changes do not switch the app icon.
+- **Local videos, watchlist, and playlists:** import selected videos or a folder through Android's document picker; search the local library; save catalog titles, exact episodes, local videos, and service files; rename and reorder playlists; use previous/next and automatic advancement for playable entries.
+- **More saved connections:** independent saved accounts cover all 22 service types, including playback providers, media servers, anime trackers, Trakt, Simkl, MDBList, and subtitle providers. Actions on a saved tracker/subtitle account stay tied to that account; existing automatic-tracking connections remain separate.
+- **Installed add-ons:** install, enable, disable, or remove Stremio-compatible manifests; open catalogs with supported search, genre, and paging; retain exact title/episode identities for source and subtitle lookup.
+- **Downloads:** explicitly select a source or service file and a destination; monitor progress or cancel. Easynews adds local NZB import, per-file selection, encrypted NNTP transfer, and yEnc integrity checks.
+- **Playback options:** speed, sleep timer, subtitle appearance, VLC subtitle timing and chapters, playback details, and playlist navigation. Media3 and embedded VLC retain their existing shared fullscreen/mini-player session.
+- **Public metadata cache:** recently read supported public catalog metadata remains available during short outages. This does not make account libraries, source resolution, or remote video available offline.
+- **Direct streams and troubleshooting:** open an HTTPS or validated local-server media URL, review offline app/player diagnostics, optionally check fixed public endpoints, and save a sanitized report to a chosen document.
 
-## Six appearances
+Implementation details and service-specific boundaries are in the [parity record](docs/CAMEO_ANDROID_PARITY.md).
 
-Open **Settings → Appearance → Themes**. Glass is the fresh-install default. Existing appearance choices migrate to their closest new layout without clearing account connections, playback preferences, or viewing progress.
+## Getting started
 
-| Theme | Native composition |
+1. On a phone, use **Browse**, the **Movies / Shows** category tabs, or **Anime** to browse public metadata. TV has separate **Movies** and **Shows** destinations. **Explore** opens a featured title's details; choose a source or your own file to play it.
+2. Open **Library → Import videos** or **Import a folder** for local content. Files remain in their original location. Removing a library entry does not delete the video.
+3. Open **Settings → Connections** to add a saved account and explicitly choose it for supported operations. Use **Existing accounts, tracking, and subtitles** for the retained Android connections, including the original automatic-tracking configuration. Service-specific plans, keys, access tokens, or registered application identifiers may be required.
+4. Use **+ Library** on the featured title to save it to the device watchlist. Repeating the action keeps one saved entry. A title or file's options also provide watchlist and playlist actions. A catalog playlist entry still opens source selection; it does not automatically create a cloud transfer.
+5. Open **Settings → Add-ons** to install a compatible HTTPS manifest or a validated private-LAN HTTP manifest. An enabled add-on can contribute its declared catalogs, metadata, sources, or subtitles. A `stremio://` address is normalized to HTTPS.
+6. Use **Download** on a source or service file, then choose a new destination in Android's save dialog. For Easynews, open its saved connection, choose **Import NZB**, select the NZB document, choose one contained file, and choose its destination.
+7. **Settings → Open a stream URL** accepts a media address for explicit playback. **Settings → Troubleshooting and diagnostic report** offers a local report and a separate public-connectivity check; reports are never uploaded automatically.
+
+Cameo supplies no subscriptions, media-service credentials, API keys, Trakt Client ID, or Simkl Client ID. Account actions use the account you connect. Saving a replacement account creates a new connection identity so an old saved file is not silently retargeted to another account.
+
+## Appearance and window behavior
+
+Open **Settings → Appearance**. Glass is the fresh-install default.
+
+| Appearance | Visual layout |
 | --- | --- |
-| Glass | A floating glass-style rail, expansive artwork, white actions, and soft white focus. |
-| Essential | A fixed dark rail, cyan actions/focus, and aligned landscape watching cards. |
-| Premiere | Immersive artwork, a large serif feature title, warm gold focus, and a wide lower card row. |
-| Atelier | An ivory canvas, horizontal navigation, and a split text/artwork feature. |
-| Horizon | Horizontal navigation, wide artwork, and cyan/violet actions and focus. |
-| Studio | A large watching feature, an episode column, and browse shortcuts in a dashboard composition. |
+| Glass | Cool blue, immersive artwork, translucent surfaces, and a rounded TV rail. |
+| Cinema | Near-black and champagne, condensed film titles, fine rules, and horizontal TV navigation. |
+| Slate | Graphite and emerald, a framed hero, clear touch pills, and a permanent TV rail. |
+| Pearl | Ivory and slate blue, serif display headings, framed artwork, and a split TV hero. |
+| Aurora | Midnight violet and cyan, restrained atmosphere, capsule navigation, and a panoramic TV hero. |
 
-The [approved six-design gallery](design/concepts-2026-10-26/index.html) contains generated references with fictional sample titles. The picker uses those images as previews; the running Home screen uses actual catalog and account content. Android 8 glass depth uses tinted gradients and borders. Inter and Cormorant Garamond are bundled locally with their original SIL Open Font Licenses and [source attribution](app/src/main/assets/FONT_NOTICES.md); no runtime font-service request is made.
+Existing Essential, Premiere, Atelier, and Horizon preferences retain their stored identifiers and display as Slate, Cinema, Pearl, and Aurora. Existing Studio preferences remain readable; Studio is not in the new five-theme picker. Earlier Android appearance preferences still migrate without clearing accounts or playback history.
 
-The [Sony comparison gallery](docs/previews/0.3.0/index.html) now places all six reviewed actual guest Home captures beside the approved concepts. The captures below come from the `582cec…6273` candidate on the Sony Android 8 TV after its viewport-clipping fix. They show public discovery content, not connected account pages or private Continue Watching. They establish that candidate's appearance; they do not validate a later playback-policy APK. [Implementation notes](design/concepts-2026-10-26/implementation-specs.md) record the reference geometry and dynamic-content rules.
+The touch layout uses the **current window size in dp**, including split-screen and fold/unfold changes. **Home / Browse / Anime / Library / Search** remain at the bottom at every touch width. Content at least 560dp wide can use a split feature composition, including the tested 720dp unfolded window. The mini-player remains above the bottom menu. Both browsing and fullscreen playback follow the device's orientation preference on mobile; TV retains landscape presentation. The renderer has not been verified on a physical Galaxy Z Fold 8.
 
-| Glass — actual Sony capture | Essential — actual Sony capture |
-| --- | --- |
-| ![Actual Glass guest Home from the 582 candidate on Sony Android 8](docs/previews/0.3.0/01-glass-guest-home.png) | ![Actual Essential guest Home from the 582 candidate on Sony Android 8](docs/previews/0.3.0/02-essential-guest-home.png) |
-| **Premiere — actual Sony capture** | **Atelier — actual Sony capture** |
-| ![Actual Premiere guest Home from the 582 candidate on Sony Android 8](docs/previews/0.3.0/03-premiere-guest-home.png) | ![Actual Atelier guest Home from the 582 candidate on Sony Android 8](docs/previews/0.3.0/04-atelier-guest-home.png) |
-| **Horizon — actual Sony capture** | **Studio — actual Sony capture** |
-| ![Actual Horizon guest Home from the 582 candidate on Sony Android 8](docs/previews/0.3.0/05-horizon-guest-home.png) | ![Actual Studio guest Home from the 582 candidate on Sony Android 8](docs/previews/0.3.0/06-studio-guest-home.png) |
-
-Studio can read the connected Trakt account's watched shows and episode progress for Up Next, with discovery/local entries as a fallback. These reads do not mark episodes watched. The watched-show and progress requests stay bound to the captured account through any 401 refresh/retry.
-
-## Verification status
-
-The current source-list fix candidate passes **418 automated tests across 54 suites, with 0 failures, 0 errors, and 0 skipped**. The latest production-code Android lint run reports **0 errors / 57 warnings**; the subsequent addition was unit-test coverage only. Both the app and device-audit APKs assemble successfully. Its main APK is `bd45a3…69e0`, version 0.3.0-preview / code 6; the full digest is recorded in the [audit](docs/AUDIT_0.3.0.md).
-
-On long source lists, Down now enters the first listed stream and moves through the rows in order. The Sony Android 8 baseline had jumped directly from the header to row 60 of 70, which happened to be a 720p source. The new APK passed two full 70-row round trips, header entry/exit, five middle-source openings, 25 middle-file selections, and exact Back restoration, with every focused card fully visible and history unchanged. The same ordered list navigation is used with the player controller and mini-player. Unit regressions cover all six themes with and without a synthetic mini-player. These offline synthetic choices do not establish authenticated service transfer/playback.
-
-The current bd45 APK passed standalone v2 signature verification with the retained certificate, and the installed Sony bytes match the build. Cleanup removed the temporary audit package and launched normal POV. The encrypted account file matched a fresh fingerprint taken immediately before this update; no account/history contents were exported. This is an update-specific check, not a comparison with an older pre-0.3 session.
-
-The preceding `7abc58…ee15` APK passed the **Sony native VLC progressive audit**, with real motion and new decoded pictures in fullscreen, mini, and returned fullscreen. Two audio/eight subtitle tracks, native manual selection, local SRT, document-picker availability, mini options/Return, Stop one Right from Play/Pause, and both paused handoffs at 0 ms passed. Picture-baseline waits ranged from 412 to 1,634 ms. History and preferences were restored.
-
-That same preceding APK passed the **immediate Sony Media3 adaptive-fallback audit** and a separate **mini-only repetition** using actual `OMX.google.h264.decoder`, with one decoder initialization and no releases. Both required changing video pixels and new post-baseline frames in mini/returned fullscreen; the repeat also exercised the reused mini view. Tracks, all 11 audio-menu rows, remote controls, PCM boost/reset, same-player handoffs, and exact 0 ms paused transitions passed; history/preferences were restored. Its Continue Watching removal fixture and standalone v2 signature check also passed. **The full player paths have not been rerun on `bd45a3…69e0`.**
-
-The current `bd45a3…69e0` APK and refreshed app-source ZIP have been packaged and passed the exact archive privacy scan with **zero detector findings**: 484 APK entries, 44,283 DEX strings, and 222 allowlisted source entries. The earlier `7abc58…ee15` / `56aecc…05a0` pair remains a completed historical checkpoint. The [audit](docs/AUDIT_0.3.0.md) records their separate scopes; release availability is listed on [GitHub](https://github.com/MM-482/pov-android-tv/releases).
-
-Native theme selection/focus checks covered all six layouts across preceding candidates. The reviewed six-theme visual refresh on `582cec…6273` verifies the corrected card clipping; it is separate from those earlier selection/focus checks, the `7abc58…ee15` playback results, and the current source-list audit.
-
-API regressions use fake transports and synthetic accounts. Authenticated new-provider playback, MDBList/Simkl reporting, and online subtitle downloads have not been exercised with real accounts. A working linked badge, passing unit suite, or public sample does not establish every service or video format.
-
-<details>
-<summary>Reviewed player screenshots from the preceding 7abc APK</summary>
-
-These actual Sony Android 8 captures use the public sample and the preceding `7abc58…ee15` APK. They show no connected account page, private playback link, or personal viewing history. They are separate from the six 582-candidate Home captures above and do not represent a player rerun on `bd45a3…69e0`.
-
-![Actual POV 7abc compact player controls on Sony Android 8 using the public sample](docs/previews/0.3.0/player-controls.png)
-
-![Actual POV 7abc audio options on Sony Android 8 using the public sample](docs/previews/0.3.0/player-audio.png)
-
-![Actual POV 7abc public-sample video with controls hidden on Sony Android 8](docs/previews/0.3.0/player-hidden.png)
-
-</details>
-
-## Playback and remote controls
+## Playback and controls
 
 | Action | Behavior |
 | --- | --- |
-| Back from fullscreen | Return to browsing with the same session in the mini-player. |
-| Select the mini-player | Return to the same video and position in fullscreen. |
-| Menu while browsing, or hold Select on the mini-player | Open Return to video / Stop playback. Some TVs reserve Menu for system settings. |
-| Hold Select on a Continue Watching title | Open Resume / Remove from Continue Watching. |
-| Audio or Subtitles in the player | Open track options; Automatic mode is separate from the indication of the actual selected track. |
+| Tap the video after controls hide | Restore the controls without pausing, replacing, or restarting the playback session. |
+| Drag the timeline | Keep controls available throughout the scrub and start a fresh hide interval when the gesture finishes. |
+| Back from fullscreen | Browse with the same session in the in-app mini-player. |
+| Tap/select the mini-player | Return to fullscreen playback. |
+| Hold the mini-player, or use the TV Menu action | Open Return to video / Stop playback. |
+| Hold a Continue Watching title | Open Resume / Remove from Continue Watching. |
+| Playback options | Audio, subtitles, speed, sleep, chapters where available, volume boost, and playback details. |
+| Previous/next playlist item | Follow the saved playlist order; catalog entries require explicit source selection. |
 | Stop | Save local progress and release the playback session. |
-| All POV screens leave the foreground | Pause; resume on return only if playback was active before leaving. |
+| All Cameo screens leave the foreground | Pause; resume on return only if playback was previously active. |
 
-Audio/subtitle availability depends on the selected file. Subtitle import uses Android's document picker; USB and network folders depend on installed document providers. POV includes no SMB file browser and requests no broad storage permission.
+Media3 is the default engine; Settings selects the engine for the next video. Recognized HLS/DASH URLs and protected requests can route to Media3 while preserving the saved VLC preference. Chapter selection and subtitle timing are available through VLC. Caption styling depends on subtitle format; applying VLC caption defaults reloads the current video at its position. Media3 decoded-PCM boost remains separate from system volume and is unavailable on unsupported routes.
 
-Media3 is the default engine. With VLC selected, recognized DASH (`.mpd`) and HLS (`.m3u8`) URL paths use Media3 for that session and show a notice, preserving the saved preference. DASH routing follows a reproduced Sony native VLC abort/no-output case; HLS routing is precautionary. Detection uses the URL path suffix, ignoring case and query parameters, and does not identify extensionless manifests. Protected Easynews streams also use Media3's guarded credential/redirect handling.
+The mini-player is inside Cameo. This version does not add a system picture-in-picture window, a desktop-style pop-out, or a permanent background playback/download service.
 
-On the exact `SVP-DTV15` device at Android API 26, Media3 promotes advertised `OMX.google.h264.decoder` for AVC while retaining every other decoder's fallback order. It also excludes the exact `OMX.MTK.VIDEO.DECODER.VP9` from VP9 choices and softly prefers H.264 before VP9 when no explicit MIME preference was saved. Other advertised VP9 decoders remain eligible. Real track-selection tests retain VP9-only media and prevent unsupported AVC from displacing supported VP9. Media3 still ranks actual format support, so sources beyond the software decoder's capabilities may use a supported hardware alternative or report unsupported playback. Other devices/API versions, explicit MIME preferences, the saved engine, and VLC remain unchanged. The public sample passed on software AVC; larger files, sustained CPU/power use, and software performance across other formats remain untested.
+## Downloads, data, and privacy
 
-Volume boost offers Off, +3, +6, +9, and +12 dB on supported Media3 decoded-PCM output. Passthrough and VLC report boost as unavailable. Track support, HDR, HDMI audio, and audible output depend on the TV and source; the compatibility guard uses the player's reported capabilities and does not certify every copy.
+Downloads run while the app process remains alive. Interrupted jobs are marked for a new start after process restart; partial transfers are not resumed. Complete progressive files and verified NZB files are the supported download paths; there is no HLS/DASH offline-packaging engine or RAR/PAR2 repair/extraction. The selected document provider must support the required file operations. Temporary downloads also require free app-cache space before the completed file is copied to your chosen destination.
 
-## Source selection and accounts
+Account credentials and configured add-on addresses use the existing encrypted private store and Android Keystore. Library references, playlists, watchlist, download history, and local playback history use private app storage; they are not all additionally encrypted. Saved service descriptors retain account/file identities rather than resolved stream URLs or authorization headers. Android backup exclusions remain enabled.
 
-The selected playback service receives its own account requests and credentials. Multiple eligible video versions remain individually selectable by filename and size; an exact provider filename can suggest initial focus without hiding alternatives. Episode matching rejects explicit mismatches and samples, while ambiguous unmarked packs require manual identification. Selecting a source can request a transfer; browsing its choices does not add one.
+Public catalog requests use HTTPS. User-configured media servers and add-ons may use HTTP only for validated private, loopback, or local-link destinations; request authentication is scoped to the intended origin. The app has no developer-operated account, advertising, or telemetry service. See [current data/network behavior](docs/CAMEO_ANDROID_PARITY.md#data-and-network-behavior) and the retained [privacy baseline](docs/PRIVACY.md).
 
-Use Up/Down to follow the displayed source and file order. From the list header, Down enters the first row; Up from that row returns to the header. Long lists no longer depend on Android 8's distance-based focus search, which could skip directly to a distant lower-quality row.
+## Building and installing an update
 
-Raw cloud files can play without a catalog match. Identify the movie or exact episode when external tracking is wanted; POV does not silently mark guessed filenames watched. The app does not run a P2P client or provide offline video downloads.
+**Use the side-by-side Cameo Preview candidate for initial testing when the original installation's signing key is unavailable.** Its application ID is `dev.pov.tv.cameopreview`, its launcher label is **Cameo Preview**, and its version is `0.4.2-preview-side-by-side`. Its first installation starts with separate, fresh app data and leaves the installed `dev.pov.tv` app and its data intact. Existing regular-app accounts, library entries, and history are not copied automatically. A Preview update signed with the retained Preview key can update the earlier Cameo Preview installation in place.
 
-Account credentials and optional-tracker pending updates use encrypted private storage with Android Keystore and backup exclusions. Local playback history and pending Trakt updates are private app preferences but are not additionally encrypted by POV. The app has no developer-operated account, advertising, or telemetry service. See [Privacy](docs/PRIVACY.md) for all service requests, storage, and removal boundaries.
-
-## Build on Windows
-
-Run from this project directory in PowerShell. Use **PowerShell 7 (`pwsh`)** for source-policy, packaging, and GitHub-preparation scripts.
+The source uses Java 17, Gradle 8.14.3, compile API 36, target API 35, and minimum API 26. On Windows, run from the project directory with PowerShell 7:
 
 ```powershell
 .\scripts\bootstrap.ps1
 .\scripts\build.ps1
 ```
 
-Bootstrap downloads checksum-pinned official Android command-line tools, Gradle, and Temurin Java 17 into `.tooling/`. This source uses compile API 36, target API 35, and minimum API 26. The default build runs `assembleDebug`, `testDebugUnitTest`, and `lintDebug`; build caches and generated outputs use the task-specific temporary directory outside OneDrive. The script sets `POV_BUILD_OUTPUT` and records its resolved path for packaging, without changing global PATH or Java settings. Initial tool/dependency downloads need network access; no Python interpreter is needed by the Android app.
+Bootstrap downloads checksum-pinned tooling into the project tooling directory. The default build runs `assembleDebug`, `testDebugUnitTest`, and `lintDebug`. The existing `POV_BUILD_OUTPUT` environment variable remains the build-output contract; the debug APK is under `$env:POV_BUILD_OUTPUT/outputs/apk/debug/app-debug.apk`. [Packaging](scripts/package.ps1) creates the APK/source pair and an external `SHA256SUMS.txt`; packaging alone does not publish a release.
 
-The app APK is at `$env:POV_BUILD_OUTPUT/outputs/apk/debug/app-debug.apk`; unit and lint reports are under that output directory. `scripts/package.ps1` creates the APK/source pair and an **external `SHA256SUMS.txt`**. The source ZIP must not contain its own checksum. Packaging and offline checks do not publish a release.
+Build the separate candidate with the script's task parameter:
 
-The preview is debug-signed for sideload testing. Retain the signing key to update an existing installation in place. A separately built APK may have a different key and require removal of the installed app, which clears local data. Keep keys/passwords outside source control; an owner-controlled release key is still needed for production distribution.
+```powershell
+.\scripts\build.ps1 -Tasks @(':app:assemblePreview')
+```
 
-## Remaining boundaries
+Its APK is under `$env:POV_BUILD_OUTPUT/outputs/apk/preview/app-preview.apk`. With an already configured Gradle/Android toolchain, the equivalent task is `gradle :app:assemblePreview`. The preview build inherits debug signing and uses its separate application ID; the default debug build remains `dev.pov.tv` / **Cameo**.
 
-- The current `bd45a3…69e0` APK/source pair passed its exact archive privacy scan, as did the historical `7abc58…ee15` / `56aecc…05a0` pair. These are bounded static checks, with image content reviewed separately. Full player results apply to `7abc58…ee15`; the long-list source audit, fresh signature check, and update-specific cleanup apply to `bd45a3…69e0`; the reviewed six-theme captures apply to `582cec…6273`.
-- New-provider streams, tracking synchronization, and online subtitle quotas/downloads need authorized real-account validation.
-- Broader TVs, codecs, HDR, HDMI routes, storage providers, and audible gain remain outside the exercised Sony/public-sample paths. The mini-player is in-app; there is no permanent background playback/sync service or system picture-in-picture mode.
-- Public metadata and third-party provider availability can change. Anime mappings can be incomplete; manual matching remains available rather than claiming every record is correct.
-- Native source materials are supplied separately from the app-source ZIP in the [prepared LibVLC companion](https://github.com/MM-482/pov-android-tv/releases/download/v0.3.0-preview/POV-Android-TV-0.3.0-LibVLC-3.7.7-corresponding-sources.zip). Its pinned JNI/VLC sources, 65 contrib archives, notices and four-ABI offline fetch checks are complete by the recorded recipe. Offline app assembly through a local pinned AAR passed; native compilation, modified-runtime testing and byte-identical rebuilding were not performed. Asset availability follows the versioned release. See [LibVLC notes](docs/LIBVLC.md).
-- This independent preview does not reproduce every upstream metadata menu, Kodi skin setting, provider, add-on, or download-management action.
+**Development APKs are debug-signed. An in-place update requires the same signing certificate/private key as the installed APK.** Keeping the application ID preserves compatibility only when the signing identity also matches. Retain and use the original signing key for updates. If that key is unavailable, keep the existing installation and its data intact while arranging a correctly signed build. Signing keys and passwords must stay outside source control.
 
-## Source and acknowledgments
+## Verification scope
 
-Original POV 6.10.06: [kodifitzwell/repo](https://github.com/kodifitzwell/repo), revision `2ea2eb7f330988ade16d388d3832b8e4b60c6b24`. Its manifest identifies kodifitzwell and declares GNU GPL version 3. Original visual identity/fanart are credited to that project; the selected launcher icon and new wordmark were generated using its identity as a reference. The original developer is not affiliated with this port.
+The final local run passed **570 tests in 77 suites**, with no failures, errors or skipped tests. Both APK builds succeeded; Android lint reported **0 errors and 64 warnings**. All **15 native preview renders** passed their geometry checks. The [0.4.2 validation record](docs/VALIDATION_0.4.2.md) records the exact artifact identities and scope. Earlier [0.4.1](docs/VALIDATION_0.4.1.md) and [0.4.0](docs/VALIDATION_0.4.0.md) validation records remain historical.
 
-POV application source is provided under [GNU GPL version 3](LICENSE). Runtime [notices](app/src/main/assets/NOTICE.txt) retain dependency and asset attribution. AndroidX Media3 and Kotlin use Apache License 2.0; LibVLC/native components retain the licenses described in [the LibVLC notes](docs/LIBVLC.md). Service names and runtime artwork belong to their respective owners.
+Automated checks cover the adaptive layout, theme/icon independence, configuration-change navigation/session retention, TV navigation regressions, saved libraries/playlists, service contracts, download handling, NZB/yEnc integrity, and player options. The opt-in preview fixture renders real native controls at the original phone canvas sizes, a 720dp unfolded window, and the TV canvas. Its fictional catalog and optional artwork sampled from text-free reference regions are test fixtures only. Preview metadata identifies these as **simulated native layouts**, not physical-device screenshots.
 
-Public source exports use an explicit allowlist for app source, scripts, documentation, licenses, and reviewed visual assets. They exclude `inspection/`, `.tooling/`, `verification/`, generated builds/caches, machine settings, runtime preferences/history, private account/device evidence, and signing material. Heuristic static checks cannot prove the absence of every secret or inspect image content; review the exact publication files.
+The current Android work has **not** been exercised with live paid accounts, a physical Galaxy Z Fold 8, or a physical TV. Historical Sony captures and audits under `docs/previews/0.3.0/` and `docs/AUDIT_0.3.0.md` apply to their recorded 0.3.0 candidates.
 
-The [0.2.2 release](https://github.com/MM-482/pov-android-tv/releases/tag/v0.2.2-preview), [audit](docs/AUDIT_0.2.2.md), and [change notes](docs/RELEASE_NOTES_0.2.2.md) remain historical records. The [0.3.0 release destination](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview) pairs its APK with the matching application-source ZIP, separate LibVLC source companion, and external checksums when published. Consult the [release listing](https://github.com/MM-482/pov-android-tv/releases) for current availability.
+The Windows source was available for feature comparison. All ten original November 2 phone and TV concepts were supplied for the 0.4.1 visual correction. The production app renders live catalog artwork and native controls; it does not display flattened concept screenshots. Exact artwork and system bars depend on the content and device. The actual Mac source remains unavailable, so complete Mac parity is unverified.
 
-The current `bd45a3…69e0` APK and refreshed app-source ZIP passed the artifact privacy check with zero detector findings. Source exports exclude runtime accounts, viewing history, local tooling and private signing keys. This heuristic scan does not prove every secret absent or inspect image content; the selected images were reviewed separately. The separate native companion passed its source-input, notice and consumer-route checkpoint with the limits in [LibVLC notes](docs/LIBVLC.md). See the audit and release checksums for exact artifact scopes.
+## License and history
+
+Application source is provided under [GNU GPL version 3](LICENSE). Original POV 6.10.06 is credited to [kodifitzwell/repo](https://github.com/kodifitzwell/repo), revision `2ea2eb7f330988ade16d388d3832b8e4b60c6b24`. The original developer is not affiliated with this port. Cameo's new Android launcher marks are native vector assets; existing upstream asset and dependency notices remain in place.
+
+AndroidX Media3, Kotlin, OkHttp, and Okio retain their Apache License 2.0 notices; the [complete license](app/src/main/assets/Apache-2.0.txt) is included. Embedded LibVLC/native components and bundled fonts retain their upstream licenses and [source obligations](docs/LIBVLC.md). Runtime artwork and service names belong to their respective owners. The [runtime notices](app/src/main/assets/NOTICE.txt), including the Public Suffix List notice, and [font notices](app/src/main/assets/FONT_NOTICES.md) remain included.
+
+Historical [0.3.0 setup](docs/INSTALL_0.3.0.md), [change notes](docs/RELEASE_NOTES_0.3.0.md), [audit](docs/AUDIT_0.3.0.md), design galleries, and earlier release records are preserved. They describe their own versions and do not certify this 0.4.2 candidate.

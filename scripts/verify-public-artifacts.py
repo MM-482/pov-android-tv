@@ -87,6 +87,25 @@ REVIEWED_UPSTREAM_APK = {
     'assets/lua/playlist/twitch.lua': '51a1a1ad502cf313' 'd1befce19040fff3' '6889038b81a1d1fb' 'b815e808cfdd34a2',
 }
 
+# Reviewed synthetic network fixtures from the Cameo 0.4.0 JVM tests. These use
+# injected/mock transports, documentation-range rejection cases, or ephemeral
+# loopback servers; they are not addresses collected from a user's devices.
+# Only the IP-address finding is classified, only at the exact source path,
+# and only for this reviewed UTF-8 content. CRLF-to-LF normalization allows a
+# Windows checkout without accepting any other content change. All credential,
+# archive-path, and runtime-file checks remain active. Changed content requires
+# another review and remains subject to the normal scan.
+REVIEWED_NETWORK_TEST_SOURCES = {
+    'app/src/test/java/dev/pov/tv/DownloadTransferTest.kt': 'bb50bc78a39074de' '1e68150caf002f9b' '2eb5e88654c22e38' 'f72d9271cf2a1076',
+    'app/src/test/java/dev/pov/tv/SameOriginMediaRequestsTest.kt': '1571fbb5f6880094' '924dd47c58619121' '2b0dfc98ef494f47' '4a65a11842bdfa80',
+    'app/src/test/java/dev/pov/tv/data/AddonRepositoryTest.kt': 'ab323e82b3e21cd0' '53a6367a48fdd19f' '258e3469e101324b' '18bedb0fac3ac3d5',
+    'app/src/test/java/dev/pov/tv/data/CameoConnectionsTest.kt': 'f51b2366c36d37d6' '81bee5127c5ed2fd' 'dc02783606692cc7' 'b3e70223c788279c',
+    'app/src/test/java/dev/pov/tv/data/CameoServiceTransportTest.kt': '3ea9bd56f831c2d3' '458eb1ae295212c6' '476dbace1a9a781f' '30992334c6ed3d84',
+    'app/src/test/java/dev/pov/tv/data/ProviderHubTest.kt': '2f610784a996799f' 'd6f69977c9b76cd9' '17ebb6fb49110419' '4273a37bdc542420',
+    'app/src/test/java/dev/pov/tv/data/SourceResolverEndpointTest.kt': '2199f8551e217cf7' 'a89a22701d5a7751' '9ae7ddd41ebb3086' '3e2145c19cebca15',
+    'app/src/test/java/dev/pov/tv/subtitles/AddonSubtitleDownloadsTest.kt': 'a09f8fa1a116a15d' '710e8ddf80dcee0f' '67724bb27880ccaf' '6d88b4edcef9d929',
+}
+
 
 def public_source_revision(url):
     clean = url.rstrip(').,;]')
@@ -127,7 +146,7 @@ def opaque_value(value, public_digests, sensitive=False):
     return classes == 3 and entropy(value) >= (4.1 if sensitive else 4.5)
 
 
-def scan_text(text, name, public_digests, dex=False, binary=False):
+def scan_text(text, name, public_digests, dex=False, binary=False, reviewed_network_fixture=False):
     issues = []
     # The API and preference *field names* are public implementation details, not secrets.
     for number, line in enumerate(text.splitlines(), 1):
@@ -138,7 +157,7 @@ def scan_text(text, name, public_digests, dex=False, binary=False):
                 # Dependency DEX contains literal wildcard/localhost defaults. These exact
                 # standalone defaults do not identify the owner's LAN or account.
                 dependency_default = dex and line == match.group() and (address.is_loopback or address.is_unspecified)
-                if (address.is_private or address.is_loopback or address.is_link_local) and not dependency_default:
+                if (address.is_private or address.is_loopback or address.is_link_local) and not (dependency_default or reviewed_network_fixture):
                     rules.add('private-network-address')
             except ValueError:
                 pass
@@ -238,7 +257,8 @@ def audit_archive(path, kind, public_digests=()):
     raw = path.getvalue() if isinstance(path, io.BytesIO) else Path(path).read_bytes()
     name = 'synthetic.zip' if isinstance(path, io.BytesIO) else Path(path).name
     result = {'kind': kind, 'file': safe_name(name), 'sha256': hashlib.sha256(raw).hexdigest(),
-              'entries': 0, 'dex_strings': 0, 'reviewed_upstream_entries': [], 'issues': []}
+              'entries': 0, 'dex_strings': 0, 'reviewed_upstream_entries': [],
+              'reviewed_network_test_entries': [], 'issues': []}
     public_digests = set(public_digests)
     try:
         with zipfile.ZipFile(path) as archive:
@@ -264,6 +284,18 @@ def audit_archive(path, kind, public_digests=()):
                     result['issues'].append(finding('entry-cannot-be-audited', name))
                     continue
                 data = archive.read(info)
+                reviewed_network_fixture = False
+                if kind == 'source' and name in REVIEWED_NETWORK_TEST_SOURCES:
+                    normalized_digest = hashlib.sha256(data.replace(b'\r\n', b'\n')).hexdigest()
+                    if normalized_digest == REVIEWED_NETWORK_TEST_SOURCES[name]:
+                        reviewed_network_fixture = True
+                        result['reviewed_network_test_entries'].append({
+                            'entry': name, 'sha256': hashlib.sha256(data).hexdigest(),
+                            'lf_normalized_sha256': normalized_digest,
+                            'provenance': 'Reviewed synthetic/mock endpoint or loopback-server JVM test fixture.',
+                        })
+                    else:
+                        result['issues'].append(finding('reviewed-network-fixture-content-changed', name))
                 if kind == 'apk' and name in REVIEWED_UPSTREAM_APK:
                     digest = hashlib.sha256(data).hexdigest()
                     if digest == REVIEWED_UPSTREAM_APK[name]:
@@ -283,10 +315,12 @@ def audit_archive(path, kind, public_digests=()):
                     binary = b'\0' in data
                     # ASCII strings also cover binary XML/resource UTF-8 string pools and metadata.
                     for block in re.findall(rb'[\x20-\x7e\r\n\t]{8,}', data):
-                        result['issues'].extend(scan_text(block.decode('ascii'), name, public_digests, binary=binary))
+                        result['issues'].extend(scan_text(block.decode('ascii'), name, public_digests, binary=binary,
+                                                         reviewed_network_fixture=reviewed_network_fixture))
                     # Android binary resources can use UTF-16LE string pools.
                     for block in re.findall(rb'(?:[\x20-\x7e]\x00){8,}', data):
-                        result['issues'].extend(scan_text(block.decode('utf-16le'), name, public_digests, binary=True))
+                        result['issues'].extend(scan_text(block.decode('utf-16le'), name, public_digests, binary=True,
+                                                         reviewed_network_fixture=reviewed_network_fixture))
     except (zipfile.BadZipFile, RuntimeError, OSError, ValueError):
         result['issues'].append(finding('archive-could-not-be-fully-read', '[archive]'))
     # Content can appear in several encodings/string tables. Report each location/rule once.
@@ -295,6 +329,68 @@ def audit_archive(path, kind, public_digests=()):
 
 
 class SyntheticTests(unittest.TestCase):
+    @staticmethod
+    def source_fixture_archive(name, contents):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, 'w') as output:
+            for required in ('app/src/main/AndroidManifest.xml', 'build.gradle.kts', 'LICENSE', 'docs/PRIVACY.md'):
+                output.writestr(required, 'synthetic required entry')
+            output.writestr(name, contents)
+        archive.seek(0)
+        return archive
+
+    def test_reviewed_network_fixture_requires_matching_source_path_and_content(self):
+        name = 'app/src/test/java/example/SyntheticNetworkTest.kt'
+        fixture = ('val address = "' + '.'.join(map(str, [192, 168, 44, 2])) + '"\n').encode()
+        digest = hashlib.sha256(fixture).hexdigest()
+        with mock.patch.dict(REVIEWED_NETWORK_TEST_SOURCES, {name: digest}):
+            result = audit_archive(self.source_fixture_archive(name, fixture), 'source')
+        self.assertEqual([], result['issues'])
+        self.assertEqual([digest], [x['sha256'] for x in result['reviewed_network_test_entries']])
+
+    def test_reviewed_network_fixture_accepts_only_crlf_line_ending_variation(self):
+        name = 'app/src/test/java/example/SyntheticNetworkTest.kt'
+        fixture = ('val address = "' + '.'.join(map(str, [127, 0, 0, 1])) + '"\n').encode()
+        digest = hashlib.sha256(fixture).hexdigest()
+        with mock.patch.dict(REVIEWED_NETWORK_TEST_SOURCES, {name: digest}):
+            result = audit_archive(self.source_fixture_archive(name, fixture.replace(b'\n', b'\r\n')), 'source')
+            altered = audit_archive(self.source_fixture_archive(name, fixture + b' '), 'source')
+        self.assertEqual([], result['issues'])
+        self.assertEqual(digest, result['reviewed_network_test_entries'][0]['lf_normalized_sha256'])
+        self.assertTrue(any(x['rule'] == 'reviewed-network-fixture-content-changed' for x in altered['issues']))
+
+    def test_changed_network_fixture_keeps_address_and_secret_findings(self):
+        name = 'app/src/test/java/example/SyntheticNetworkTest.kt'
+        fixture = ('val address = "' + '.'.join(map(str, [10, 20, 30, 40])) + '"\n').encode()
+        changed = fixture + ('Bearer ' + 'opaque-' * 8).encode()
+        with mock.patch.dict(REVIEWED_NETWORK_TEST_SOURCES, {name: hashlib.sha256(fixture).hexdigest()}):
+            result = audit_archive(self.source_fixture_archive(name, changed), 'source')
+        self.assertEqual([], result['reviewed_network_test_entries'])
+        rules = {x['rule'] for x in result['issues']}
+        self.assertTrue({'reviewed-network-fixture-content-changed', 'private-network-address',
+                         'literal-authorization-value'} <= rules)
+
+    def test_network_fixture_classification_cannot_move_to_another_path_or_apk(self):
+        name = 'app/src/test/java/example/SyntheticNetworkTest.kt'
+        fixture = ('val address = "' + '.'.join(map(str, [192, 168, 44, 2])) + '"\n').encode()
+        with mock.patch.dict(REVIEWED_NETWORK_TEST_SOURCES, {name: hashlib.sha256(fixture).hexdigest()}):
+            moved = audit_archive(self.source_fixture_archive('app/src/main/assets/copied.kt', fixture), 'source')
+            packaged = audit_archive(self.source_fixture_archive(name, fixture), 'apk')
+        for result in (moved, packaged):
+            self.assertEqual([], result['reviewed_network_test_entries'])
+            self.assertTrue(any(x['rule'] == 'private-network-address' for x in result['issues']))
+
+    def test_reviewed_network_fixture_does_not_exempt_other_secret_rules(self):
+        name = 'app/src/test/java/example/SyntheticNetworkTest.kt'
+        fixture = ('.'.join(map(str, [127, 0, 0, 1])) + '\nBearer ' + 'opaque-' * 8 +
+                   '\n-----BEGIN ' + 'PRIVATE KEY-----').encode()
+        with mock.patch.dict(REVIEWED_NETWORK_TEST_SOURCES, {name: hashlib.sha256(fixture).hexdigest()}):
+            result = audit_archive(self.source_fixture_archive(name, fixture), 'source')
+        self.assertEqual(1, len(result['reviewed_network_test_entries']))
+        rules = {x['rule'] for x in result['issues']}
+        self.assertNotIn('private-network-address', rules)
+        self.assertTrue({'literal-authorization-value', 'private-key-material'} <= rules)
+
     def test_field_names_dynamic_values_and_public_fixtures_are_allowed(self):
         source = 'store.get("trakt.access_token"); headers["Authorization"] = "Bearer $token"\n' + '"trakt.client_id" to "synthetic-client-identifier-for-tests"'
         self.assertEqual([], scan_text(source, 'example.kt', set()))
@@ -415,6 +511,7 @@ def main():
                               'No OCR or visual review of images/video; no encrypted payload inspection.',
                               'Does not prove APK/source equivalence or third-party service behavior.',
                               'Exact reviewed LibVLC AAR entries are classified by APK path and SHA256; changed bytes remain failures and are scanned.',
+                              'Reviewed synthetic network tests classify only IP-address findings at exact source paths and LF-normalized SHA256; all secret checks remain active.',
                               'Recognized public synthetic fixtures, explicit bootstrap SHA256 pins and exact reviewed upstream source-revision URLs are allowed.']}
     output = json.dumps(report, indent=2)
     print(output)

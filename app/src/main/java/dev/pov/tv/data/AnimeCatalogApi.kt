@@ -61,6 +61,10 @@ class AnimeCatalogApi internal constructor(
         { url -> Net.json(url, headers = mapOf("Accept" to "application/vnd.api+json")) },
         trakt::lookupCatalogId
     )
+    constructor(trakt: TraktApi, context: android.content.Context) : this(
+        PublicMetadataCache(context)::json, trakt::lookupCatalogId,
+        canonicalDetails = CatalogApi(context)::details
+    )
 
     private data class Cached(val at: Long, val page: AnimePage)
     private val pages = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {

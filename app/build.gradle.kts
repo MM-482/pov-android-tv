@@ -10,8 +10,9 @@ android {
         applicationId = "dev.pov.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.3.0-preview"
+        versionCode = 9
+        versionName = "0.4.2-preview"
+        manifestPlaceholders["cameoAppLabel"] = "Cameo"
         testInstrumentationRunner = "dev.pov.tv.PlaybackAuditInstrumentation"
     }
     buildFeatures { buildConfig = true }
@@ -21,6 +22,13 @@ android {
     }
     buildTypes {
         release { isMinifyEnabled = false }
+        create("preview") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".cameopreview"
+            versionNameSuffix = "-side-by-side"
+            manifestPlaceholders["cameoAppLabel"] = "Cameo Preview"
+            matchingFallbacks += listOf("debug")
+        }
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
     packaging { resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*") }
@@ -29,6 +37,7 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Embed the engine; the separate VLC application is not required.
     implementation("org.videolan.android:libvlc-all:3.7.7")
     implementation("androidx.media3:media3-exoplayer:1.8.0")

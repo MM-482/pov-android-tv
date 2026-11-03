@@ -18,7 +18,7 @@ import java.util.concurrent.ExecutorService
 
 /** Actual native screen behavior, with no account/network/native-player startup. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 class UiIntegrationTest {
     private class Credentials : ProviderCredentials {
         private val values = mutableMapOf("realdebrid.token" to "test-token", "realdebrid.account_revision" to "old")

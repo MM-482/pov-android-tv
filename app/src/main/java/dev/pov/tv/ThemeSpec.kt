@@ -3,10 +3,10 @@ package dev.pov.tv
 import android.content.Context
 
 /**
- * The five visual directions in design/01-cinematic.png through 05-dashboard.png.
+ * Saved appearance identifiers remain compatible with earlier installations.
  *
- * Dimensions reproduce the concepts on a 960 x 540 logical canvas. Layout code can
- * scale these values together for other TV sizes while retaining their proportions.
+ * Legacy TV dimensions use a 960 x 540 logical canvas. Touch renderers use current
+ * window dimensions and native density independently of that TV geometry.
  * Theme changes contain presentation only; account and playback state are separate.
  */
 enum class ThemeSpec(
@@ -119,10 +119,10 @@ enum class ThemeSpec(
         ),
     ),
     GLASS("glass", "Glass", "A floating glass rail, spacious artwork, and soft white focus.", conceptPalette("glass"), conceptLayout("glass")),
-    ESSENTIAL("essential", "Essential", "The familiar cyan rail, clear actions, and compact watching cards.", conceptPalette("essential"), conceptLayout("essential")),
-    PREMIERE("premiere", "Premiere", "Warm cinema light, a quiet rail, and elegant serif typography.", conceptPalette("premiere"), conceptLayout("premiere")),
-    ATELIER("atelier", "Atelier", "An ivory canvas, a split feature, and restrained dark focus.", conceptPalette("atelier"), conceptLayout("atelier")),
-    HORIZON("horizon", "Horizon", "A slim top navigation, wide artwork, and cyan-violet focus.", conceptPalette("horizon"), conceptLayout("horizon")),
+    ESSENTIAL("essential", "Slate", "Graphite surfaces, emerald accents, and clear everyday browsing.", conceptPalette("essential"), conceptLayout("essential")),
+    PREMIERE("premiere", "Cinema", "Matte black, champagne accents, and condensed film titles.", conceptPalette("premiere"), conceptLayout("premiere")),
+    ATELIER("atelier", "Pearl", "An ivory canvas, editorial typography, and slate-blue accents.", conceptPalette("atelier"), conceptLayout("atelier")),
+    HORIZON("horizon", "Aurora", "Midnight violet, cyan controls, and a panoramic feature.", conceptPalette("horizon"), conceptLayout("horizon")),
     STUDIO("studio", "Studio", "A large watching tile, an episode column, and illustrated browse actions.", conceptPalette("studio"), conceptLayout("studio"));
 
     val conceptProfile: ConceptThemeProfile? get() = ConceptThemeProfile.forTheme(this)
@@ -135,13 +135,20 @@ enum class ThemeSpec(
     }
 
     companion object {
-        val selectableThemes: List<ThemeSpec> get() = listOf(GLASS, ESSENTIAL, PREMIERE, ATELIER, HORIZON, STUDIO)
+        // Retain existing stored IDs and rendering enums; old installations keep their appearance and data.
+        // Studio remains readable for existing users, while the Cameo picker presents the five new names.
+        val selectableThemes: List<ThemeSpec> get() = listOf(GLASS, PREMIERE, ESSENTIAL, ATELIER, HORIZON)
         /** Unknown or old preferences fall back to the user's selected concept. */
-        fun fromId(id: String?): ThemeSpec = entries.firstOrNull { it.id == id } ?: CINEMATIC
+        fun fromId(id: String?): ThemeSpec = storedTheme(id) ?: CINEMATIC
 
-        fun conceptFromId(id: String?): ThemeSpec = when (val saved = entries.firstOrNull { it.id == id }) {
+        fun conceptFromId(id: String?): ThemeSpec = when (val saved = storedTheme(id)) {
             CINEMATIC -> ESSENTIAL; EDITORIAL -> ATELIER; NEON -> HORIZON
             CINEMA -> PREMIERE; DASHBOARD -> STUDIO; null -> GLASS; else -> saved
+        }
+
+        private fun storedTheme(id: String?): ThemeSpec? = entries.firstOrNull { it.id == id } ?: when (id) {
+            "slate" -> ESSENTIAL; "pearl" -> ATELIER; "aurora" -> HORIZON
+            else -> null
         }
     }
 }

@@ -28,4 +28,21 @@ class PlaybackPreferences(context: Context) {
             require(language.matches(Regex("[a-z]{2,3}(?:-[a-z0-9]{2,8})*"))) { "Enter a subtitle language such as en, es, or pt-br." }
             check(preferences.edit().putString("subtitle_language", language).commit()) { "Subtitle preference could not be saved." }
         }
+
+    var captionAppearance: CaptionAppearance
+        get() = CaptionAppearance(
+            storedEnum("caption_size", CaptionSize.MEDIUM),
+            storedEnum("caption_color", CaptionColor.WHITE),
+            storedEnum("caption_background", CaptionBackground.TRANSPARENT),
+            storedEnum("caption_position", CaptionPosition.NORMAL),
+        )
+        set(value) {
+            check(preferences.edit().putString("caption_size", value.size.name)
+                .putString("caption_color", value.color.name)
+                .putString("caption_background", value.background.name)
+                .putString("caption_position", value.position.name).commit()) { "Caption preferences could not be saved." }
+        }
+
+    private inline fun <reified T : Enum<T>> storedEnum(key: String, fallback: T): T =
+        runCatching { enumValueOf<T>(preferences.getString(key, fallback.name) ?: fallback.name) }.getOrDefault(fallback)
 }

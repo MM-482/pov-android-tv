@@ -6,6 +6,7 @@ import java.net.URI
 /** Public Cinemeta metadata, with no embedded third-party account credentials. Call on a worker. */
 class CatalogApi internal constructor(private val publicJson: (String) -> JSONObject) {
     constructor() : this(Net::publicJson)
+    constructor(context: android.content.Context) : this(PublicMetadataCache(context)::json)
     fun popular(type: String, skip: Int = 0): List<MediaItemData> {
         requireType(type)
         require(skip >= 0) { "The catalog offset cannot be negative." }

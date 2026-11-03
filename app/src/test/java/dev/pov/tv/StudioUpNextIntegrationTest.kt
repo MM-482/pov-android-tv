@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Exercises Main's actual async loader and native renderer without onCreate, accounts, or HTTP. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class StudioUpNextIntegrationTest {
     private val expected = PlaybackIdentity("tt0903747", "series", "Series Fixture", 3, 7)

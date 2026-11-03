@@ -13,7 +13,9 @@ data class MediaItemData(
     val genres: List<String> = emptyList(),
     val runtime: String = "",
     val rating: String = "",
-    val episodes: List<EpisodeData> = emptyList()
+    val episodes: List<EpisodeData> = emptyList(),
+    val addonId: String = "",
+    val catalogId: String = ""
 )
 
 data class EpisodeData(
@@ -21,7 +23,9 @@ data class EpisodeData(
     val episode: Int,
     val title: String,
     val released: String = "",
-    val thumbnail: String = ""
+    val thumbnail: String = "",
+    val sourceId: String = "",
+    val sourceIds: List<String> = emptyList()
 )
 
 data class PlaybackIdentity(
@@ -29,16 +33,20 @@ data class PlaybackIdentity(
     val type: String,
     val title: String,
     val season: Int = 0,
-    val episode: Int = 0
+    val episode: Int = 0,
+    val sourceId: String = "",
+    val addonId: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("imdbId", imdbId).put("type", type).put("title", title)
         .put("season", season).put("episode", episode)
+        .put("sourceId", sourceId).put("addonId", addonId)
 
     companion object {
         fun fromJson(json: JSONObject): PlaybackIdentity = PlaybackIdentity(
             json.optString("imdbId"), json.optString("type"), json.optString("title"),
-            json.optInt("season"), json.optInt("episode")
+            json.optInt("season"), json.optInt("episode"),
+            json.optString("sourceId"), json.optString("addonId")
         )
     }
 }
@@ -57,14 +65,19 @@ data class DeviceAuth(
 data class SourceItem(
     val title: String, val provider: String, val infoHash: String = "",
     val fileIndex: Int? = null, val directUrl: String = "", val cached: Boolean = false,
-    val detail: String = ""
+    val detail: String = "",
+    val headers: Map<String, String> = emptyMap(),
+    val addonId: String = "",
+    val sourceId: String = "",
+    val origin: String = ""
 )
 
 /** A selected source either streams directly or offers stable TorBox file identities. */
 sealed interface PreparedSource {
     val identity: PlaybackIdentity
 
-    data class Direct(val url: String, override val identity: PlaybackIdentity) : PreparedSource
+    data class Direct(val url: String, override val identity: PlaybackIdentity,
+        val headers: Map<String, String> = emptyMap(), val origin: String = "") : PreparedSource
 
     data class Files(
         val folder: CloudFolder,

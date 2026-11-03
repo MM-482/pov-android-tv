@@ -11,7 +11,7 @@ internal data class SubtitleRequest(
     val url: String, val method: String = "GET", val headers: Map<String, String> = emptyMap(),
     val body: JSONObject? = null, val maxBytes: Int = 2 * 1024 * 1024,
     val allowedHosts: Set<String>, val allowSubdomains: Boolean = false,
-    val download: Boolean = false
+    val download: Boolean = false, val publicDownloadRedirects: Boolean = false
 )
 internal data class SubtitleResponse(val bytes: ByteArray, val contentType: String) {
     fun json(): JSONObject = try { JSONObject(String(bytes, Charsets.UTF_8)) }
@@ -24,6 +24,8 @@ internal class SubtitleHttp(
     private val open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }
 ) : SubtitleTransport {
     override fun execute(request: SubtitleRequest): SubtitleResponse {
+        if (request.publicDownloadRedirects && (!request.download || request.headers.isNotEmpty() || request.body != null))
+            throw SubtitleException("Add-on subtitle downloads cannot carry account credentials.")
         var target = checkedUrl(request.url, request.allowedHosts, request.allowSubdomains)
         var headers = request.headers
         var method = request.method
@@ -37,7 +39,7 @@ internal class SubtitleHttp(
                 connection.connectTimeout = 15_000
                 connection.readTimeout = 25_000
                 connection.requestMethod = method
-                connection.setRequestProperty("User-Agent", "POV-Standalone v0.3")
+                connection.setRequestProperty("User-Agent", "Cameo-Android v0.4")
                 connection.setRequestProperty("Accept", if (request.download) "*/*" else "application/json")
                 headers.forEach { (key, value) ->
                     if (value.any { it == '\r' || it == '\n' }) throw SubtitleException("A saved subtitle credential is invalid.")
@@ -55,7 +57,10 @@ internal class SubtitleHttp(
                     if (hop == 4) throw SubtitleException("The subtitle service redirected too many times.")
                     val location = connection.getHeaderField("Location")
                         ?: throw SubtitleException("The subtitle service returned an incomplete download link.")
-                    val next = checkedUrl(URL(target, location).toExternalForm(), request.allowedHosts, request.allowSubdomains)
+                    val address = URL(target, location)
+                    val next = checkedUrl(address.toExternalForm(),
+                        if (request.publicDownloadRedirects) setOf(address.host.lowercase(Locale.ROOT)) else request.allowedHosts,
+                        request.allowSubdomains)
                     if (!request.download && (method != "GET" || next.host != target.host || next.port != target.port)) {
                         throw SubtitleException("The subtitle service redirected an authenticated request unexpectedly.")
                     }

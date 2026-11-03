@@ -496,7 +496,7 @@ class TraktApi internal constructor(
     }
 
     private fun invalidDeviceResponse(): Nothing = throw ApiException(0,
-        "Trakt did not return a usable activation code. Choose Connect Trakt to try again. If this continues, update POV or check Trakt's service status.")
+        "Trakt did not return a usable activation code. Choose Connect Trakt to try again. If this continues, update Cameo or check Trakt's service status.")
 
     /** Only fixed messages are displayed; never echo an OAuth response, URL, ID, or token. */
     private fun authError(error: ApiException, starting: Boolean): ApiException {
@@ -508,13 +508,13 @@ class TraktApi internal constructor(
                 "Trakt is limiting requests. Wait $wait seconds, then choose Connect Trakt again."
             }
             error.code in 500..599 -> "Trakt is temporarily unavailable (HTTP ${error.code}). Try connecting again later."
-            error.code in 300..399 -> "Trakt redirected the connection unexpectedly. Update POV and try again."
+            error.code in 300..399 -> "Trakt redirected the connection unexpectedly. Update Cameo and try again."
             error.code == 0 && error.message.orEmpty().contains("timed out") ->
                 "The request to Trakt timed out. Check the TV's internet connection and try again."
             error.code == 0 && error.message.orEmpty().contains("secure connection") ->
                 "A secure connection to Trakt could not be established. Check the TV's date, time, and internet connection."
             error.code == 0 && error.message.orEmpty().contains("unreadable") ->
-                "Trakt returned an unreadable response. Try again later or update POV."
+                "Trakt returned an unreadable response. Try again later or update Cameo."
             error.code == 0 -> "Trakt could not be reached. Check the TV's internet connection and try again."
             starting && error.code in setOf(400, 422) ->
                 "Trakt could not issue an activation code (HTTP ${error.code}). Check this app's Client ID in Settings, save it, then try again."

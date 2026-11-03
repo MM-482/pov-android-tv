@@ -8,6 +8,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.TrackGroup
@@ -41,6 +42,13 @@ internal interface VlcPlaybackDriver {
     fun stop()
     fun seekTo(position: Long)
     fun setVolume(volume: Float) {}
+    fun setRate(speed: Float) {}
+    val subtitleDelayMillis: Long get() = 0L
+    fun setSubtitleDelayMillis(value: Long): Boolean = false
+    fun chapters(): List<PlaybackChapter> = emptyList()
+    val chapterIndex: Int get() = -1
+    fun selectChapter(index: Int): Boolean = false
+    fun configureCaptions(appearance: CaptionAppearance) {}
     fun selectTrack(type: Int, id: Int): Boolean
     fun selectAutomatic(type: Int, language: String)
     fun attach(view: SurfaceView)
@@ -69,6 +77,7 @@ internal class LibVlcPlayer(
     private var closed = false
     private var firstFrame = false
     private var normalVolume = 1f
+    private var playbackSpeed = PlaybackParameters.DEFAULT
     private var outputReady = false
     private var renderedFrameAnnounced = false
     private var pauseInFlight = false
@@ -99,6 +108,12 @@ internal class LibVlcPlayer(
     internal val nativeSurfacesReady: Boolean get() = driver.surfacesReady
     internal val nativeVideoTrack: Int get() = driver.nativeVideoTrack
     internal val nativeVoutCount: Int get() = driver.nativeVoutCount
+    internal val subtitleDelayMillis: Long get() = driver.subtitleDelayMillis
+    internal val currentChapterIndex: Int get() = driver.chapterIndex
+    internal fun chapters(): List<PlaybackChapter> = if (closed) emptyList() else driver.chapters()
+    internal fun selectChapter(index: Int): Boolean = !closed && driver.selectChapter(index).also { if (it) invalidateState() }
+    internal fun setSubtitleDelayMillis(value: Long): Boolean = !closed &&
+        driver.setSubtitleDelayMillis(value.coerceIn(-120_000, 120_000))
 
     init { driver.listener = ::onDriverEvent }
 
@@ -109,6 +124,7 @@ internal class LibVlcPlayer(
             Player.COMMAND_GET_CURRENT_MEDIA_ITEM, Player.COMMAND_GET_TIMELINE,
             Player.COMMAND_GET_METADATA, Player.COMMAND_GET_TRACKS,
             Player.COMMAND_GET_VOLUME, Player.COMMAND_SET_VOLUME,
+            Player.COMMAND_SET_SPEED_AND_PITCH,
             Player.COMMAND_SET_TRACK_SELECTION_PARAMETERS, Player.COMMAND_SET_VIDEO_SURFACE,
         ).addIf(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, driver.seekable)
             .addIf(Player.COMMAND_SEEK_TO_DEFAULT_POSITION, driver.seekable)
@@ -127,6 +143,7 @@ internal class LibVlcPlayer(
             .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000)
             .setTrackSelectionParameters(parameters).setVideoSize(driver.videoSize)
             .setVolume(normalVolume)
+            .setPlaybackParameters(playbackSpeed)
             .setNewlyRenderedFirstFrame(firstFrame.also { firstFrame = false })
             .setContentPositionMs(PositionSupplier { pendingSeek ?: settlingSeek ?: driver.position.coerceAtLeast(0) })
             .setContentBufferedPositionMs(PositionSupplier { driver.position.coerceAtLeast(0) })
@@ -191,6 +208,38 @@ internal class LibVlcPlayer(
         return done()
     }
 
+    override fun handleSetPlaybackParameters(value: PlaybackParameters): ListenableFuture<*> {
+        playbackSpeed = PlaybackParameters(value.speed.coerceIn(.5f, 2f), 1f)
+        driver.setRate(playbackSpeed.speed)
+        return done()
+    }
+
+    /** Reopen native media only when applying caption defaults, retaining session and pause intent. */
+    internal fun setCaptionAppearance(appearance: CaptionAppearance) {
+        if (closed) return
+        driver.configureCaptions(appearance)
+        val current = item ?: return
+        val position = currentPosition.coerceAtLeast(0)
+        val delay = driver.subtitleDelayMillis
+        resetPreparation()
+        driver.open(current, subtitleLanguage)
+        for (type in listOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT)) {
+            if (type in parameters.disabledTrackTypes) driver.selectTrack(type, -1)
+            else {
+                val selected = parameters.overrides.values.firstOrNull { it.type == type }
+                val index = selected?.trackIndices?.firstOrNull()
+                val id = if (selected != null && index != null && index in 0 until selected.mediaTrackGroup.length)
+                    selected.mediaTrackGroup.getFormat(index).id?.substringAfterLast(':')?.toIntOrNull() else null
+                if (id != null) driver.selectTrack(type, id)
+            }
+        }
+        driver.setRate(playbackSpeed.speed)
+        driver.setSubtitleDelayMillis(delay)
+        pendingSeek = position.takeIf { it > 0 }
+        prepared = true; status = Player.STATE_BUFFERING; failure = null
+        applyEffectiveVolume(); requestNativePlay(); scheduleReadiness(); invalidateState()
+    }
+
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         val target = positionMs.coerceAtLeast(0).let { if (driver.duration > 0) it.coerceAtMost(driver.duration) else it }
         if (status == Player.STATE_ENDED) {
@@ -228,7 +277,7 @@ internal class LibVlcPlayer(
     }
 
     override fun handleSetVideoOutput(videoOutput: Any): ListenableFuture<*> {
-        require(videoOutput is SurfaceView) { "POV VLC requires a SurfaceView video output" }
+        require(videoOutput is SurfaceView) { "Cameo VLC requires a SurfaceView video output" }
         if (output !== videoOutput) { driver.detach(); output = videoOutput; driver.attach(videoOutput) }
         return done()
     }
