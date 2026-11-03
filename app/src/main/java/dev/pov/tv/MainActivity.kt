@@ -277,7 +277,7 @@ class MainActivity : Activity() {
         navigationViews.clear()
         if (theme.conceptProfile != null || mobile) {
             val targets = destinations().filter { it.key !in setOf("trakt", "nowplaying") }.map { target ->
-                ConceptDestination(target.key, if (target.key == "series") "TV Shows" else target.label) {
+                ConceptDestination(target.key, target.label) {
                     if (target.key == "search") target.screen()
                     else {
                         destination = target.key; backStack.clear(); current = target.screen
@@ -430,7 +430,8 @@ class MainActivity : Activity() {
     private fun page(title: String, subtitle: String = ""): Int {
         generation++; resolvingGeneration = null; isHome = false; wantsContentFocus = !mobile; showingCameoFeature = false
         continueOptions.clear()
-        if (!mobile && theme.conceptProfile != null) ConceptShellRenderer.applyContentInsets(scroller, theme, home = false)
+        if (mobile) MobileShellRenderer.applyContentInsets(scroller, theme, home = false)
+        else if (theme.conceptProfile != null) ConceptShellRenderer.applyContentInsets(scroller, theme, home = false)
         focusController.reset(); body.removeAllViews(); heroBackdrop.visibility = View.GONE
         body.setPadding(0, dp(if (mobile) 12 else if (theme.layout.navigation == NavigationPlacement.LEFT_RAIL) 63 else 15), 0, contentBottomPadding())
         scroller.scrollTo(0, 0); heroBackdrop.translationY = 0f
@@ -493,7 +494,8 @@ class MainActivity : Activity() {
                         else -> cameo.library()
                     }
                 } },
-                bindContinue = { view, saved -> bindContinueOptions(view, saved.key, saved.identity, saved.title) { resumeSaved(saved) } }
+                bindContinue = { view, saved -> bindContinueOptions(view, saved.key, saved.identity, saved.title) { resumeSaved(saved) } },
+                saveToLibrary = { item -> cameo.saveToLibrary(item) }
             )
         if (mobile) MobileHomeRenderer(this, theme).render(body, heroBackdrop, backdropArt, data, callbacks)
         else ConceptHomeRenderer(this, theme).render(body, heroBackdrop, backdropArt, data, callbacks)
@@ -612,7 +614,7 @@ class MainActivity : Activity() {
 
     private fun resumeRow(recent: List<PlaybackStore.Recent>) {
         section("Continue Watching")
-        body.addView(text("Hold Select or press Menu for title options", 10, muted), margin(-1, -2, bottom = 7))
+        body.addView(text(if (mobile) "Touch and hold a title for options" else "Hold Select or press Menu for title options", 10, muted), margin(-1, -2, bottom = 7))
         val row = horizontalRow()
         recent.take(12).forEach { saved ->
             val identity = saved.identity
@@ -622,7 +624,7 @@ class MainActivity : Activity() {
             val action: () -> Unit = {
                 resumeSaved(saved)
             }
-            if (theme == ThemeSpec.CINEMATIC) {
+            if (theme == ThemeSpec.CINEMATIC && !mobile) {
                 val group = column()
                 group.addView(tile(item, saved.position.toDouble() / saved.duration.coerceAtLeast(1), action = action).apply {
                     tag = "resume:${saved.key}"
@@ -633,7 +635,7 @@ class MainActivity : Activity() {
             } else row.addView(tile(item, saved.position.toDouble() / saved.duration.coerceAtLeast(1), remaining, action).apply {
                 tag = "resume:${saved.key}"
                 bindContinueOptions(this, saved.key, saved.identity, saved.title, action)
-            }, margin(cardWidth(), theme.layout.cardHeightDp, right = theme.layout.cardGapDp))
+            }, margin(cardWidth(), cardHeight(), right = theme.layout.cardGapDp))
         }
     }
 
@@ -2108,7 +2110,9 @@ class MainActivity : Activity() {
         if (mobile) setTextSize(TypedValue.COMPLEX_UNIT_SP, size.coerceAtLeast(12).toFloat())
         else setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(size).toFloat())
         setTextColor(color)
-        typeface = if (theme.isConcept) ConceptUi(this@MainActivity, theme).font(if (bold) 650 else 400)
+        typeface = if (theme.isConcept) ConceptUi(this@MainActivity, theme).font(if (bold) 650 else 400,
+            serif = theme == ThemeSpec.ATELIER && bold && size >= 24,
+            condensed = theme == ThemeSpec.PREMIERE && bold && size >= 24)
             else Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
         includeFontPadding = false
     }

@@ -3,7 +3,6 @@ package dev.pov.tv
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Rect
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.util.TypedValue
@@ -26,130 +25,200 @@ data class ConceptHomeData(
     val recent: List<PlaybackStore.Recent>, val upNext: List<PlaybackIdentity> = emptyList(),
 )
 data class ConceptHomeCallbacks(
-    val loadImage: (ImageView,String) -> Unit,
+    val loadImage: (ImageView, String) -> Unit,
     val details: (MediaItemData) -> Unit,
     val play: (MediaItemData) -> Unit,
     val resume: (PlaybackStore.Recent) -> Unit,
     val browse: (String) -> Unit,
-    val bindContinue: (View,PlaybackStore.Recent) -> Unit,
+    val bindContinue: (View, PlaybackStore.Recent) -> Unit,
     val episode: (PlaybackIdentity) -> Unit,
+    val saveToLibrary: (MediaItemData) -> Unit = {},
 )
 
-/** Six native compositions. All titles, art, progress and actions come from real input data. */
-class ConceptHomeRenderer(private val context:Context,private val theme:ThemeSpec) {
-    private val profile=requireNotNull(theme.conceptProfile)
-    private val ui=ConceptUi(context,theme)
-    private val palette=theme.palette
-    private data class Entry(val item:MediaItemData,val saved:PlaybackStore.Recent?=null,val episode:PlaybackIdentity?=null)
+/** November 2 native TV compositions. Artwork, labels, progress and actions remain live data. */
+class ConceptHomeRenderer(private val context: Context, private val theme: ThemeSpec) {
+    private val profile = requireNotNull(theme.conceptProfile)
+    private val ui = ConceptUi(context, theme)
+    private val palette = theme.palette
+    private data class Entry(val item: MediaItemData, val saved: PlaybackStore.Recent? = null, val episode: PlaybackIdentity? = null)
 
-    fun render(body:LinearLayout,heroBackdrop:FrameLayout,backdropArt:ImageView,data:ConceptHomeData,callbacks:ConceptHomeCallbacks) {
-        (body.parent as? ScrollView)?.let { ConceptShellRenderer.applyContentInsets(it,theme,home=true) }
+    fun render(body: LinearLayout, heroBackdrop: FrameLayout, backdropArt: ImageView, data: ConceptHomeData, callbacks: ConceptHomeCallbacks) {
+        (body.parent as? ScrollView)?.let { ConceptShellRenderer.applyContentInsets(it, theme, home = true) }
         body.removeAllViews()
-        // The Activity owns bottom clearance for its active mini-player.
-        body.setPadding(0,0,0,body.paddingBottom)
-        val canvas=FrameLayout(context).apply { tag="concept-home:${theme.id}";clipChildren=false;clipToPadding=false }
-        body.addView(canvas,LinearLayout.LayoutParams(ui.px(960),ui.px(540)))
-        val saved=data.recent.filter { it.duration>0 && it.position>=0 && it.position<it.duration }
-        val first=saved.firstOrNull()?.let { entry(it,data) } ?: (data.movies.firstOrNull()?:data.shows.firstOrNull())?.let { Entry(it) }
-        if(theme==ThemeSpec.STUDIO) {
-            heroBackdrop.visibility=View.GONE
-            studio(canvas,first,saved,data,callbacks)
+        // MainActivity owns the extra scroll clearance while its mini-player is active.
+        body.setPadding(0, 0, 0, body.paddingBottom)
+        val canvas = FrameLayout(context).apply { tag = "concept-home:${theme.id}"; clipChildren = false; clipToPadding = false }
+        body.addView(canvas, LinearLayout.LayoutParams(ui.px(960), ui.px(540)))
+        val saved = data.recent.filter { it.duration > 0 && it.position >= 0 && it.position < it.duration }
+        if (theme == ThemeSpec.STUDIO) {
+            val first = saved.firstOrNull()?.let { entry(it, data) }
+                ?: (data.movies.firstOrNull() ?: data.shows.firstOrNull())?.let { Entry(it) }
+            heroBackdrop.visibility = View.GONE
+            studio(canvas, first, saved, data, callbacks)
             return
         }
-        if(first!=null) {
-            if(theme==ThemeSpec.ATELIER) {
-                heroBackdrop.visibility=View.GONE
-                val art=artFrame(first.item,callbacks,9)
-                ui.place(canvas,art,392,66,538,259)
+        val featured = data.movies.firstOrNull() ?: data.shows.firstOrNull()
+        heroBackdrop.visibility = View.GONE
+        backdropArt.setImageDrawable(null)
+        if (featured != null) {
+            if (theme == ThemeSpec.GLASS || theme == ThemeSpec.PREMIERE) {
+                heroBackdrop.layoutParams = heroBackdrop.layoutParams.apply {
+                    height = ui.px(if (theme == ThemeSpec.PREMIERE) 285 else 540)
+                }
+                heroBackdrop.visibility = View.VISIBLE
+                callbacks.loadImage(backdropArt, address(featured))
             } else {
-                heroBackdrop.layoutParams=heroBackdrop.layoutParams.apply { height=ui.px(540) }
-                heroBackdrop.visibility=View.VISIBLE
-                callbacks.loadImage(backdropArt,address(first.item))
+                val art = artFrame(featured, callbacks, if (theme == ThemeSpec.HORIZON) 19 else profile.radius)
+                art.tag = "concept:hero:art"
+                if (theme != ThemeSpec.ATELIER) art.addView(View(context).apply {
+                    background = ui.gradient(intArrayOf(ui.alpha(palette.background, 250), ui.alpha(palette.background, 120), Color.TRANSPARENT), GradientDrawable.Orientation.LEFT_RIGHT)
+                }, FrameLayout.LayoutParams(-1, -1))
+                ui.place(canvas, art, profile.heroFrameX, profile.heroFrameY, profile.heroFrameWidth, profile.heroFrameHeight)
             }
-            feature(canvas,first,callbacks)
+            feature(canvas, featured, callbacks)
         } else {
-            heroBackdrop.visibility=View.GONE
-            ui.place(canvas,ui.text("Find your next story",30,palette.text,true),profile.heroCopyX,130,500,50)
-            ui.place(canvas,action("Browse movies",true){callbacks.browse("movie")},profile.heroCopyX,205,155,42)
+            ui.place(canvas, ui.text("Find your next story", 30, palette.text, true), profile.heroCopyX, profile.heroCopyY, profile.heroCopyWidth, 70)
+            ui.place(canvas, action("Browse movies", true) { callbacks.browse("movie") }, profile.heroCopyX, profile.actionsY, 150, 36)
         }
-        val entries=if(saved.isNotEmpty())saved.take(12).map { entry(it,data) }
-            else (data.movies.ifEmpty { data.shows }).take(12).map { Entry(it) }
-        val heading=if(saved.isNotEmpty())"Continue Watching" else "Discover"
-        ui.place(canvas,ui.text(heading,if(theme==ThemeSpec.PREMIERE)16 else 18,palette.text,true),profile.sectionX,profile.sectionY,700,27)
-        watchingRow(canvas,entries,callbacks)
-    }
-
-    private fun entry(saved:PlaybackStore.Recent,data:ConceptHomeData):Entry {
-        val identity=saved.identity
-        val catalog=(data.movies+data.shows).firstOrNull { it.imdbId==identity?.imdbId }
-        val item=catalog?:MediaItemData(identity?.imdbId.orEmpty(),identity?.type?:"movie",identity?.title?:saved.title,
-            background=identity?.imdbId?.takeIf { it.matches(Regex("tt[0-9]+")) }?.let { "https://images.metahub.space/background/medium/$it/img" }.orEmpty())
-        return Entry(item,saved)
-    }
-
-    private fun feature(canvas:FrameLayout,entry:Entry,callbacks:ConceptHomeCallbacks) {
-        val item=entry.item
-        val x=profile.heroCopyX
-        val y=profile.heroCopyY
-        val width=profile.heroCopyWidth
-        val titleY=when(theme) { ThemeSpec.ATELIER->132;ThemeSpec.HORIZON->117;else->y }
-        if(theme==ThemeSpec.ATELIER||theme==ThemeSpec.HORIZON) {
-            val eyebrow=ui.text(if(theme==ThemeSpec.ATELIER)"FEATURED TONIGHT" else "YOUR NEXT GREAT STORY",8,
-                if(theme==ThemeSpec.ATELIER)0xFFAC7D59.toInt() else palette.muted,true).apply { letterSpacing=.40f;maxLines=1 }
-            ui.place(canvas,eyebrow,x,if(theme==ThemeSpec.ATELIER)110 else 94,width,15)
+        if (saved.isNotEmpty()) {
+            heading(canvas, "Continue Watching", "continue", profile.sectionY, profile.watchingWidth)
+            shelf(canvas, saved.take(24).map { entry(it, data) }, callbacks, discovery = false,
+                y = profile.cardsY, width = profile.cardWidth, height = profile.cardHeight, gap = profile.cardGap, visible = 3)
         }
-        val title=ui.text(item.title.uppercase(Locale.getDefault()),profile.titleSize,
-            if(theme==ThemeSpec.ATELIER)Color.BLACK else palette.text).apply {
-            typeface=ui.font(if(theme==ThemeSpec.GLASS)350 else 400,serif=theme==ThemeSpec.PREMIERE)
-            letterSpacing=profile.titleTracking
-            gravity=Gravity.CENTER_VERTICAL;maxLines=2;ellipsize=TextUtils.TruncateAt.END
-            setAutoSizeTextTypeUniformWithConfiguration(ui.px(22).coerceAtLeast(1),ui.px(profile.titleSize).coerceAtLeast(2),ui.px(1).coerceAtLeast(1),TypedValue.COMPLEX_UNIT_PX)
-            contentDescription=item.title
+        val discover = (data.movies + data.shows).distinctBy { it.type to it.imdbId }.filterNot { item ->
+            featured != null && item.type == featured.type && item.imdbId == featured.imdbId
         }
-        ui.place(canvas,title,x,titleY,width,if(theme==ThemeSpec.PREMIERE)59 else 55)
-        val metadata=listOf(item.year,item.genres.firstOrNull().orEmpty(),item.runtime).filter(String::isNotBlank).joinToString("  ·  ")
-        val metaY=when(theme) { ThemeSpec.GLASS->157;ThemeSpec.ESSENTIAL->148;ThemeSpec.PREMIERE->188;ThemeSpec.ATELIER->186;else->166 }
-        val meta=ui.text(metadata,12,if(theme==ThemeSpec.ATELIER)palette.muted else 0xFFCDD3DF.toInt()).apply {
-            maxLines=1;letterSpacing=if(theme==ThemeSpec.GLASS||theme==ThemeSpec.PREMIERE).16f else 0f
-        }
-        ui.place(canvas,meta,x,metaY,width,22)
-        val descY=when(theme) { ThemeSpec.GLASS->187;ThemeSpec.ESSENTIAL->176;ThemeSpec.PREMIERE->212;ThemeSpec.ATELIER->216;else->193 }
-        if(item.description.isNotBlank()) {
-            val description=ui.text(item.description,12,palette.muted).apply { maxLines=2;setLineSpacing(ui.px(3).toFloat(),1f) }
-            ui.place(canvas,description,x,descY,if(theme==ThemeSpec.ATELIER)300 else minOf(width,380),43)
-        }
-        val buttonY=when(theme) { ThemeSpec.GLASS->235;ThemeSpec.ESSENTIAL->225;ThemeSpec.PREMIERE->260;ThemeSpec.ATELIER->267;else->241 }
-        val primary=action(if(entry.saved!=null)"▶  Resume" else "▶  Play",true){ activate(entry,callbacks) }.apply { tag="concept:hero:play" }
-        entry.saved?.let { callbacks.bindContinue(primary,it) }
-        ui.place(canvas,primary,x,buttonY,if(theme==ThemeSpec.ATELIER)132 else if(theme==ThemeSpec.HORIZON)153 else 143,42)
-        if(item.imdbId.isNotBlank()) {
-            ui.place(canvas,action("ⓘ  More info",false){callbacks.details(item)}.apply { tag="concept:hero:details" },
-                x+(if(theme==ThemeSpec.ATELIER)141 else if(theme==ThemeSpec.HORIZON)165 else 153),buttonY,
-                if(theme==ThemeSpec.ESSENTIAL)111 else if(theme==ThemeSpec.PREMIERE)146 else 124,42)
+        if (discover.isNotEmpty()) {
+            heading(canvas, "Discover", "discover", if (saved.isEmpty()) profile.sectionY else profile.discoverSectionY, profile.discoverWidth)
+            shelf(canvas, discover.take(40).map { Entry(it) }, callbacks, discovery = true,
+                y = if (saved.isEmpty()) profile.cardsY else profile.discoverCardsY,
+                width = profile.discoverCardWidth, height = profile.discoverCardHeight, gap = profile.discoverCardGap, visible = 5)
         }
     }
 
-    private fun watchingRow(canvas:FrameLayout,entries:List<Entry>,callbacks:ConceptHomeCallbacks) {
-        val width=4*profile.cardWidth+3*profile.cardGap
-        val scroll=HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled=false;isFocusable=false;isFocusableInTouchMode=false
-            descendantFocusability=ViewGroup.FOCUS_AFTER_DESCENDANTS;clipChildren=true;clipToPadding=false
-            // A long row is one child; clipChildren alone clips that child's own
-            // bounds, rather than this viewport, on the Android 8 TV renderer.
-            addOnLayoutChangeListener { target,left,top,right,bottom,_,_,_,_ ->
-                target.clipBounds=Rect(0,0,right-left,bottom-top)
-            }
+    private fun entry(saved: PlaybackStore.Recent, data: ConceptHomeData): Entry {
+        val identity = saved.identity
+        val catalog = (data.movies + data.shows).firstOrNull { it.imdbId == identity?.imdbId && it.type == identity?.type }
+        val item = catalog ?: MediaItemData(identity?.imdbId.orEmpty(), identity?.type ?: "movie", identity?.title ?: saved.title,
+            background = identity?.imdbId?.takeIf { it.matches(Regex("tt[0-9]+")) }?.let { "https://images.metahub.space/background/medium/$it/img" }.orEmpty())
+        return Entry(item, saved)
+    }
+
+    private fun feature(canvas: FrameLayout, item: MediaItemData, callbacks: ConceptHomeCallbacks) {
+        val title = ui.text(item.title.uppercase(Locale.getDefault()), profile.titleSize, palette.text,
+            theme == ThemeSpec.ESSENTIAL || theme == ThemeSpec.HORIZON).apply {
+            tag = "concept:hero:title"
+            typeface = ui.font(if (theme == ThemeSpec.ESSENTIAL || theme == ThemeSpec.HORIZON) 750 else if (theme == ThemeSpec.ATELIER) 550 else if (theme == ThemeSpec.GLASS) 500 else 400,
+                serif = theme == ThemeSpec.ATELIER, condensed = theme == ThemeSpec.PREMIERE)
+            letterSpacing = profile.titleTracking
+            gravity = Gravity.CENTER_VERTICAL
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            // The reference title stacks use tight leading; retain room for real long titles.
+            setLineSpacing(0f, when (theme) {
+                ThemeSpec.GLASS -> .78f
+                ThemeSpec.ESSENTIAL -> .84f
+                ThemeSpec.ATELIER -> .74f
+                ThemeSpec.HORIZON -> .80f
+                else -> 1f
+            })
+            setAutoSizeTextTypeUniformWithConfiguration(ui.px(20).coerceAtLeast(1), ui.px(profile.titleSize).coerceAtLeast(2), ui.px(1).coerceAtLeast(1), TypedValue.COMPLEX_UNIT_PX)
+            contentDescription = item.title
         }
-        val row=LinearLayout(context).apply {clipChildren=false;clipToPadding=false;setPadding(ui.px(3),ui.px(3),ui.px(5),ui.px(5))}
+        ui.place(canvas, title, profile.heroCopyX, profile.heroCopyY, profile.heroCopyWidth, profile.titleHeight)
+        val metadata = listOf(item.year, item.genres.firstOrNull().orEmpty(), item.runtime).filter(String::isNotBlank).joinToString("  ·  ")
+        ui.place(canvas, ui.text(metadata, 13, if (theme == ThemeSpec.ATELIER) palette.text else palette.muted).apply {
+            maxLines = 1
+            if (theme == ThemeSpec.ATELIER) typeface = ui.font(500, serif = true)
+        }, profile.heroCopyX, profile.metadataY, profile.heroCopyWidth, 20)
+        ui.place(canvas, action("Explore", true) { callbacks.details(item) }.apply { tag = "concept:hero:explore" },
+            profile.heroCopyX, profile.actionsY, profile.primaryWidth, 36)
+        ui.place(canvas, action("+ Library", false) { callbacks.saveToLibrary(item) }.apply { tag = "concept:hero:library" },
+            profile.heroCopyX + profile.primaryWidth + profile.actionGap, profile.actionsY, profile.secondaryWidth, 36)
+    }
+
+    private fun heading(canvas: FrameLayout, value: String, key: String, y: Int, width: Int) {
+        val ruled = theme == ThemeSpec.PREMIERE || theme == ThemeSpec.ATELIER
+        val line = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; tag = "concept:heading:$key" }
+        val label = ui.text(if (theme == ThemeSpec.PREMIERE) value.uppercase(Locale.getDefault()) else value,
+            if (theme == ThemeSpec.PREMIERE) 13 else 17, palette.text, theme != ThemeSpec.PREMIERE).apply {
+            maxLines = 1
+            typeface = ui.font(if (theme == ThemeSpec.PREMIERE) 500 else 650, serif = theme == ThemeSpec.ATELIER)
+            if (theme == ThemeSpec.PREMIERE) letterSpacing = .18f
+        }
+        line.addView(label, LinearLayout.LayoutParams(-2, -2))
+        if (ruled) line.addView(View(context).apply { setBackgroundColor(ui.alpha(palette.border, 200)) },
+            LinearLayout.LayoutParams(0, ui.px(1).coerceAtLeast(1), 1f).apply { leftMargin = ui.px(14) })
+        ui.place(canvas, line, profile.sectionX, y, width, 23)
+    }
+
+    private fun shelf(canvas: FrameLayout, entries: List<Entry>, callbacks: ConceptHomeCallbacks, discovery: Boolean,
+        y: Int, width: Int, height: Int, gap: Int, visible: Int) {
+        val viewportWidth = visible * width + (visible - 1) * gap
+        val scroll = HorizontalScrollView(context).apply {
+            tag = "concept:row:${if (discovery) "discover" else "continue"}"
+            isHorizontalScrollBarEnabled = false; isFocusable = false; isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; clipChildren = true; clipToPadding = false
+            addOnLayoutChangeListener { target, left, top, right, bottom, _, _, _, _ -> target.clipBounds = Rect(0, 0, right - left, bottom - top) }
+        }
+        val row = LinearLayout(context).apply {
+            clipChildren = false; clipToPadding = false
+            setPadding(ui.px(3), ui.px(3), ui.px(5), ui.px(5))
+        }
         scroll.addView(row)
         entries.forEach { entry ->
-            row.addView(card(entry,profile.cardWidth,profile.cardHeight,profile.cardImageHeight,profile.labelsOutside,callbacks),
-                LinearLayout.LayoutParams(ui.px(profile.cardWidth),ui.px(profile.cardHeight)).apply { rightMargin=ui.px(profile.cardGap) })
+            row.addView(shelfCard(entry, width, height, discovery, callbacks),
+                LinearLayout.LayoutParams(ui.px(width), ui.px(height)).apply { rightMargin = ui.px(gap) })
         }
-        ui.place(canvas,scroll,profile.cardsX-3,profile.cardsY-3,width+6,profile.cardHeight+10)
+        ui.place(canvas, scroll, profile.cardsX - 3, y - 3, viewportWidth + 6, height + 9)
     }
 
-    private fun card(entry:Entry,width:Int,height:Int,imageHeight:Int,outside:Boolean,callbacks:ConceptHomeCallbacks):FrameLayout {
+    private fun shelfCard(entry: Entry, width: Int, height: Int, discovery: Boolean, callbacks: ConceptHomeCallbacks): FrameLayout {
+        val frame = FrameLayout(context).apply {
+            tag = stableTag(entry)
+            contentDescription = listOf(entry.item.title, if (discovery) "Explore" else "Resume", remaining(entry.saved)).filter(String::isNotBlank).joinToString(". ")
+            clipChildren = false
+            setOnClickListener { if (discovery) callbacks.details(entry.item) else activate(entry, callbacks) }
+        }
+        val art = artFrame(entry.item, callbacks, profile.radius, poster = discovery)
+        ui.place(frame, art, 0, 0, width, height)
+        val lightResume = theme == ThemeSpec.ATELIER && !discovery
+        art.addView(View(context).apply {
+            background = if (lightResume) ui.gradient(intArrayOf(ui.alpha(palette.background, 240), ui.alpha(palette.background, 125), Color.TRANSPARENT), GradientDrawable.Orientation.LEFT_RIGHT)
+            else ui.gradient(intArrayOf(ui.alpha(Color.BLACK, if (discovery) 125 else 35), Color.TRANSPARENT, ui.alpha(Color.BLACK, if (discovery) 15 else 190)), GradientDrawable.Orientation.TOP_BOTTOM)
+        }, FrameLayout.LayoutParams(-1, -1))
+        val title = ui.text(entry.item.title.uppercase(Locale.getDefault()),
+            if (theme == ThemeSpec.ATELIER) 19 else if (theme == ThemeSpec.PREMIERE) 17 else if (theme == ThemeSpec.ESSENTIAL && !discovery) 12 else 15,
+            if (lightResume) palette.text else Color.WHITE, theme == ThemeSpec.ESSENTIAL && !discovery).apply {
+            maxLines = if (theme == ThemeSpec.ESSENTIAL && !discovery) 1 else 2
+            typeface = ui.font(if (theme == ThemeSpec.ESSENTIAL && !discovery) 700 else 450,
+                serif = theme == ThemeSpec.ATELIER, condensed = theme == ThemeSpec.PREMIERE)
+            letterSpacing = if (theme == ThemeSpec.ESSENTIAL && !discovery || theme == ThemeSpec.ATELIER) 0f else .13f
+            gravity = if (discovery && theme != ThemeSpec.ATELIER) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.TOP
+            if (theme == ThemeSpec.HORIZON && !discovery) visibility = View.INVISIBLE
+        }
+        val titleY = if (theme == ThemeSpec.ESSENTIAL && !discovery || theme == ThemeSpec.HORIZON && !discovery) height - 34 else if (discovery) 10 else 15
+        val titleHeight = if (theme == ThemeSpec.ESSENTIAL && !discovery || theme == ThemeSpec.HORIZON && !discovery) 19 else 43
+        ui.place(frame, title, if (lightResume) 18 else 12, titleY, if (lightResume) minOf(width - 36, 168) else width - 24, titleHeight)
+        if (entry.saved != null) {
+            val ratio = (entry.saved.position.toDouble() / entry.saved.duration.coerceAtLeast(1)).coerceIn(0.0, 1.0)
+            progress(frame, ratio, if (lightResume) 18 else 12, height - 13, width - if (lightResume) 36 else 24, 4)
+            if (lightResume) ui.place(frame, ui.text(remaining(entry.saved), 11, palette.text).apply {
+                typeface = ui.font(400, serif = true); maxLines = 1
+            }, 18, height - 32, width - 36, 16)
+        }
+        frame.isFocusable = true; frame.isFocusableInTouchMode = true; frame.isClickable = true
+        frame.setOnFocusChangeListener { _, focused ->
+            frame.foreground = if (focused) FocusRingDrawable(palette.accent, ui.px(profile.radius).toFloat(), true, ui.scale) else null
+            frame.scaleX = if (focused) theme.layout.focusScale else 1f; frame.scaleY = frame.scaleX
+            frame.elevation = if (focused) ui.px(8).toFloat() else 0f
+            if (theme == ThemeSpec.HORIZON && !discovery) title.visibility = if (focused) View.VISIBLE else View.INVISIBLE
+        }
+        entry.saved?.let { callbacks.bindContinue(frame, it) }
+        return frame
+    }
+
+    private fun legacyCard(entry:Entry,width:Int,height:Int,imageHeight:Int,outside:Boolean,callbacks:ConceptHomeCallbacks):FrameLayout {
         val frame=FrameLayout(context).apply {
             tag=stableTag(entry);contentDescription=listOf(entry.item.title,entry.episode?.let {"Season ${it.season}, episode ${it.episode}"}.orEmpty(),remaining(entry.saved)).filter(String::isNotBlank).joinToString(". ")
             clipChildren=false
@@ -218,7 +287,7 @@ class ConceptHomeRenderer(private val context:Context,private val theme:ThemeSpe
         ui.place(canvas,ui.text(nextHeading,16,palette.muted,true),689,38,250,22)
         next.forEachIndexed {index,entry ->
             val cardHeight=if(index==0)127 else 136
-            val tile=card(entry,252,cardHeight,cardHeight,false,callbacks)
+            val tile=legacyCard(entry,252,cardHeight,cardHeight,false,callbacks)
             if(entry.episode!=null) {
                 ui.place(tile,ui.text("S${entry.episode.season} E${entry.episode.episode}",10,0xFFE0E8F3.toInt()),14,cardHeight-35,218,20)
             }
@@ -238,24 +307,27 @@ class ConceptHomeRenderer(private val context:Context,private val theme:ThemeSpe
         }
     }
 
-    private fun action(label:String,primary:Boolean,callback:()->Unit):TextView {
-        val foreground=if(primary)palette.buttonText else palette.text
-        return ui.text(label,13,foreground,true).apply {
-            gravity=Gravity.CENTER;maxLines=1;contentDescription=label.removePrefix("▶  ").removePrefix("ⓘ  ")
-            background=when {
-                primary&&theme==ThemeSpec.HORIZON -> ui.gradient(intArrayOf(0xFF64E8FD.toInt(),0xFFB773FC.toInt()),GradientDrawable.Orientation.LEFT_RIGHT,profile.buttonRadius,palette.accent)
-                primary&&theme==ThemeSpec.PREMIERE -> ui.gradient(intArrayOf(0xFFFCDB96.toInt(),0xFFF7C47E.toInt()),GradientDrawable.Orientation.TOP_BOTTOM,profile.buttonRadius,0xFFFFE3A0.toInt())
-                else -> ui.rounded(if(primary)palette.primaryButton else if(theme==ThemeSpec.ATELIER)palette.panel else ui.alpha(palette.panel,185),profile.buttonRadius,
-                    if(primary&&theme==ThemeSpec.GLASS)Color.WHITE else if(!primary&&theme!=ThemeSpec.ATELIER)palette.border else Color.TRANSPARENT)
+    private fun action(label: String, primary: Boolean, callback: () -> Unit): TextView =
+        ui.text(label, if (theme == ThemeSpec.ATELIER) 18 else 15, if (primary) palette.buttonText else palette.text, true).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            contentDescription = label.removePrefix("▶  ").removePrefix("ⓘ  ")
+            if (theme == ThemeSpec.ATELIER) typeface = ui.font(650, serif = true)
+            background = when {
+                primary && theme == ThemeSpec.PREMIERE -> ui.gradient(intArrayOf(palette.secondaryAccent, palette.primaryButton), GradientDrawable.Orientation.TOP_BOTTOM, profile.buttonRadius, palette.text)
+                primary -> ui.rounded(palette.primaryButton, profile.buttonRadius, if (theme == ThemeSpec.ESSENTIAL) palette.text else Color.TRANSPARENT)
+                else -> ui.rounded(if (theme == ThemeSpec.GLASS) ui.alpha(palette.panel, 195) else Color.TRANSPARENT,
+                    profile.buttonRadius, if (theme == ThemeSpec.ATELIER) palette.muted else ui.alpha(palette.text, 190))
             }
-            ui.focus(this,profile.buttonRadius,if(primary&&theme==ThemeSpec.ATELIER)Color.WHITE else palette.accent);setOnClickListener {callback()}
+            ui.focus(this, profile.buttonRadius)
+            setOnClickListener { callback() }
         }
-    }
 
-    private fun artFrame(item:MediaItemData,callbacks:ConceptHomeCallbacks,radius:Int)=FrameLayout(context).apply {
+    private fun artFrame(item:MediaItemData,callbacks:ConceptHomeCallbacks,radius:Int,poster:Boolean=false):FrameLayout =
+        (if (theme == ThemeSpec.STUDIO) FrameLayout(context) else RoundedArtworkFrame(context, ui.px(radius).toFloat())).apply {
         background=ui.rounded(palette.panel,radius,palette.border);clipToOutline=true
         val image=ImageView(context).apply {scaleType=ImageView.ScaleType.CENTER_CROP;importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO}
-        addView(image,FrameLayout.LayoutParams(-1,-1));callbacks.loadImage(image,address(item))
+        addView(image,FrameLayout.LayoutParams(-1,-1));callbacks.loadImage(image,if(poster)item.poster.ifBlank { item.background } else address(item))
     }
     private fun address(item:MediaItemData)=item.background.ifBlank {item.poster}
     private fun activate(entry:Entry,callbacks:ConceptHomeCallbacks) {

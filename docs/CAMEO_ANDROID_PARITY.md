@@ -1,6 +1,6 @@
-# Cameo Android 0.4.0-preview: feature mapping and boundaries
+# Cameo Android 0.4.1-preview: feature mapping and boundaries
 
-This record describes the Android source for **0.4.0-preview / versionCode 7**. It compares the supplied **Cameo Windows 0.2.4** source companion with the Android implementation built on the public Android TV **0.3.0-preview** baseline, commit `1ecffc5b68962ac84e4bd965ff36005ede2aa641`. The regular build uses `dev.pov.tv`; the side-by-side candidate uses `dev.pov.tv.cameopreview` and the launcher label **Cameo Preview**.
+This record describes the Android source for **0.4.1-preview / versionCode 8**, retaining the feature additions from 0.4.0. It compares the supplied **Cameo Windows 0.2.4** source companion with the Android implementation built on the public Android TV **0.3.0-preview** baseline, commit `1ecffc5b68962ac84e4bd965ff36005ede2aa641`. The regular build uses `dev.pov.tv`; the side-by-side candidate uses `dev.pov.tv.cameopreview` and the launcher label **Cameo Preview**.
 
 “Implemented” below means the behavior has an Android code path and relevant automated coverage where described. It does not certify a live subscription, server, codec, display, or device.
 
@@ -8,13 +8,13 @@ This record describes the Android source for **0.4.0-preview / versionCode 7**. 
 
 The Windows companion identifies its version in `README-Windows.md` and describes its features in `docs/Windows-Readme.txt`. The comparison used its actual `src/Services.cs`, `AdvancedServices.cs`, `NativeActions.cs`, `PlaylistService.cs`, `Easynews.cs`, `Player.cs`, `PlayerKeyboardInput.cs`, `IconService.cs`, `Diagnostics.cs`, and local `ui/` source.
 
-The Windows documentation describes inheritance from Cameo Mac 0.2.1. **The Mac application source itself was not supplied for this Android implementation.** Windows descriptions of Mac behavior do not establish direct Mac parity. The original **November 2 concept images were also unavailable**. The five Android appearances use native controls and new palettes; the retained October Android TV galleries are historical references, not evidence of a match to the missing images.
+The Windows documentation describes inheritance from Cameo Mac 0.2.1. **The Mac application source itself was not supplied for this Android implementation.** Windows descriptions of Mac behavior do not establish direct Mac parity. All ten original **November 2 phone and TV concept images** were supplied for the 0.4.1 correction. The native renderers now follow their palettes, compositions, navigation and typography. The retained October Android TV galleries remain historical; current verification is recorded in [0.4.1 validation](VALIDATION_0.4.1.md).
 
 Android keeps its native view hierarchy, Media3 integration, remote navigation, Android document access, and private storage. It does not embed the Windows WebView2 UI, Windows binaries, or Apple frameworks.
 
 ## Feature mapping
 
-| Windows 0.2.4 feature and reference | Android 0.4.0 implementation | Scope |
+| Windows 0.2.4 feature and reference | Android 0.4.x implementation | Scope |
 | --- | --- | --- |
 | Five themes and independent icon selection: `ui/`, `IconService.cs` | [ThemeSpec](../app/src/main/java/dev/pov/tv/ThemeSpec.kt), [mobile shell](../app/src/main/java/dev/pov/tv/MobileShellRenderer.kt), [TV shell](../app/src/main/java/dev/pov/tv/ConceptShellRenderer.kt), [CameoIcons](../app/src/main/java/dev/pov/tv/CameoIcons.kt) | Glass, Cinema, Slate, Pearl, Aurora; five independent native launcher icons and TV banners. The layout adapts to touch or TV. |
 | Local files/folders, watchlist, and saved progress: `NativeActions.cs`, `Services.cs` | [LocalLibraryImporter](../app/src/main/java/dev/pov/tv/LocalLibraryImporter.kt), [CameoLibraryStore](../app/src/main/java/dev/pov/tv/CameoLibraryStore.kt), [feature UI](../app/src/main/java/dev/pov/tv/CameoFeatures.kt), existing [PlaybackStore](../app/src/main/java/dev/pov/tv/PlaybackStore.kt) | Explicit Android document selection, persisted access where supported, local search/paging, device watchlist, and saved media references. Removing a library entry leaves its file intact. |
@@ -66,7 +66,7 @@ Other retained Android capabilities include:
 - Media3 decoded-PCM gain options on supported output routes. VLC and passthrough routes report this boost as unavailable.
 - Exact episode selection, separate anime films/specials/related works, and manual catalog matching when metadata is incomplete.
 
-The earlier Sony playback and focus audits remain historical evidence for their recorded 0.3.0 APKs. They have not been repeated on this 0.4.0 candidate.
+The earlier Sony playback and focus audits remain historical evidence for their recorded 0.3.0 APKs. They have not been repeated on this 0.4.1 candidate.
 
 ## Phone, foldable, and TV behavior
 
@@ -112,7 +112,7 @@ The following remain outside current verification or implementation:
 
 - Live paid-provider, media-server, tracker-write, subtitle-account, and Easynews NNTP validation with user accounts.
 - Physical Fold 8, physical TV, sustained decoder performance, HDR, HDMI/audio routes, and audible gain validation for this build.
-- A direct audit of Mac source, or pixel comparison against the absent November 2 concept originals.
+- A direct audit of Mac source, or physical-device pixel matching with live catalog artwork and Android system bars.
 - Windows desktop window chrome, freely detached player windows, and Windows-specific keyboard shortcuts; Android uses its native fullscreen, touch, and remote interactions.
 - Apple AVKit/AirPlay, casting, system picture-in-picture, and a permanent background playback/sync service.
 - Universal add-on compatibility, DRM/license acquisition, arbitrary browser playback, complete offline catalogs, or automatic repair of broken media archives.

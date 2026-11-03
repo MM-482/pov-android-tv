@@ -129,6 +129,11 @@ class CameoFeatures(private val host: CameoFeatureHost) {
 
     fun mediaOptions(item: MediaItemData, episode: PlaybackIdentity? = null) = savedOptions(SavedMedia.catalog(item, episode))
 
+    fun saveToLibrary(item: MediaItemData) = safely {
+        val added = library.addToWatchlist(SavedMedia.catalog(item))
+        toast(if (added) "Saved to your library watchlist" else "Already in your library watchlist")
+    }
+
     fun savedOptions(item: SavedMedia, allowRemoval: Boolean = false) {
         val choices = mutableListOf<Pair<String, () -> Unit>>()
         choices += "Play / find sources" to { playSaved(item) }

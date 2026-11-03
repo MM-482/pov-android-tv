@@ -18,7 +18,7 @@ data class AdaptiveWindow(val widthDp: Int, val heightDp: Int, val isTelevision:
     val railWidthDp: Int get() = if (useNavigationRail) 88 else 0
     val horizontalInsetDp: Int get() = if (widthDp >= 840) 28 else 16
     val contentWidthDp: Int get() = (widthDp - railWidthDp - horizontalInsetDp * 2).coerceAtLeast(1)
-    val splitFeature: Boolean get() = !isTelevision && contentWidthDp >= 720
+    val splitFeature: Boolean get() = !isTelevision && contentWidthDp >= 560
     fun gridColumns(minimumCardWidthDp: Int = 148, gapDp: Int = 12): Int =
         ((contentWidthDp + gapDp) / (minimumCardWidthDp.coerceAtLeast(1) + gapDp)).coerceIn(1, 6)
 }

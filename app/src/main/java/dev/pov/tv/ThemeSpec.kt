@@ -120,7 +120,7 @@ enum class ThemeSpec(
     ),
     GLASS("glass", "Glass", "A floating glass rail, spacious artwork, and soft white focus.", conceptPalette("glass"), conceptLayout("glass")),
     ESSENTIAL("essential", "Slate", "Graphite surfaces, emerald accents, and clear everyday browsing.", conceptPalette("essential"), conceptLayout("essential")),
-    PREMIERE("premiere", "Cinema", "Warm champagne accents, deep black, and elegant serif typography.", conceptPalette("premiere"), conceptLayout("premiere")),
+    PREMIERE("premiere", "Cinema", "Matte black, champagne accents, and condensed film titles.", conceptPalette("premiere"), conceptLayout("premiere")),
     ATELIER("atelier", "Pearl", "An ivory canvas, editorial typography, and slate-blue accents.", conceptPalette("atelier"), conceptLayout("atelier")),
     HORIZON("horizon", "Aurora", "Midnight violet, cyan controls, and a panoramic feature.", conceptPalette("horizon"), conceptLayout("horizon")),
     STUDIO("studio", "Studio", "A large watching tile, an episode column, and illustrated browse actions.", conceptPalette("studio"), conceptLayout("studio"));

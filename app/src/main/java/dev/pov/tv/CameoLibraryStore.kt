@@ -114,6 +114,15 @@ class CameoLibraryStore(context: Context) {
     fun removeLocal(key: String) = synchronized(lock) {
         val state = read(); state.put("local", JSONArray(saved(state, "local").filterNot { it.canonicalKey == key }.map { it.toJson() })); write(state)
     }
+    /** The positive '+ Library' action is idempotent and never removes an existing title. */
+    fun addToWatchlist(item: SavedMedia): Boolean = synchronized(lock) {
+        item.validate(); val state = read(); val values = saved(state, "watchlist").toMutableList()
+        if (values.any { it.canonicalKey == item.canonicalKey }) return@synchronized false
+        require(values.size < 5000) { "Your watchlist is full." }
+        values.add(0, item)
+        state.put("watchlist", JSONArray(values.map { it.toJson() })); write(state)
+        true
+    }
     fun toggleWatchlist(item: SavedMedia): Boolean = synchronized(lock) {
         item.validate(); val state = read(); val values = saved(state, "watchlist").toMutableList()
         val added = values.none { it.canonicalKey == item.canonicalKey }

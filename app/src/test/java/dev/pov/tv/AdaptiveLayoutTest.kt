@@ -12,7 +12,7 @@ class AdaptiveLayoutTest {
         assertEquals(WindowWidthClass.MEDIUM, unfolded.widthClass)
         assertTrue(unfolded.useNavigationRail)
         assertTrue(unfolded.gridColumns() > cover.gridColumns())
-        assertFalse(unfolded.splitFeature)
+        assertTrue(unfolded.splitFeature)
     }
 
     @Test fun `window size boundaries are based on dp not a physical device model`() {
@@ -21,6 +21,8 @@ class AdaptiveLayoutTest {
         assertEquals(WindowWidthClass.MEDIUM, AdaptiveWindow(839, 900, false).widthClass)
         assertEquals(WindowWidthClass.EXPANDED, AdaptiveWindow(840, 900, false).widthClass)
         assertTrue(AdaptiveWindow(1024, 800, false).splitFeature)
+        assertFalse(AdaptiveWindow(600, 900, false).splitFeature)
+        assertTrue(AdaptiveWindow(680, 900, false).splitFeature)
     }
 
     @Test fun `TV windows retain separate remote navigation irrespective of width`() {

@@ -37,6 +37,18 @@ class CameoLibraryStoreTest {
         store.addToPlaylist(playlist.id, episode("a", "ep-2"))
         assertEquals(3, store.playlist(playlist.id).items.size)
     }
+    @Test fun repeatedPositiveLibraryActionsNeverRemoveOrDuplicateSavedTitles() {
+        val first = episode("a", "episode-2")
+        val anotherSource = episode("b", "episode-2")
+        assertTrue(store.addToWatchlist(first))
+        assertFalse(store.addToWatchlist(first))
+        assertTrue(store.addToWatchlist(anotherSource))
+        assertFalse(store.addToWatchlist(first))
+        val reopened = CameoLibraryStore(RuntimeEnvironment.getApplication())
+        assertEquals(listOf(anotherSource.canonicalKey, first.canonicalKey), reopened.watchlist().map { it.canonicalKey })
+        assertTrue(reopened.isSaved(first))
+        assertTrue(reopened.isSaved(anotherSource))
+    }
     @Test fun exactAccountFileAndEditionRemainDistinct() {
         fun file(account: String, edition: String): SavedMedia {
             val descriptor = CameoServiceItem("video:one", account, "Same filename", mediaSourceId = edition)
