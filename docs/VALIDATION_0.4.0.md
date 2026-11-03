@@ -25,7 +25,22 @@ The final tests were run with `:app:testDebugUnitTest`, with `CAMEO_RENDER_PREVI
 gradle -PpovBuildRoot=<empty-build-output-directory> :app:assembleDebug :app:assemblePreview :app:lintDebug
 ```
 
-The project PowerShell build workflow and its tooling setup are described in the [README](../README.md#building-and-installing-an-update). The results here are local verification; they do not assert that a GitHub Actions run has completed.
+The project PowerShell build workflow and its tooling setup are described in the [README](../README.md#building-and-installing-an-update). The table above records local verification. Completed hosted checks are recorded separately below.
+
+## Hosted CI and packaging follow-up
+
+Both hosted Windows checks subsequently completed successfully for application source commit `27dccdba268745bee35b1837ca885e23fa7c3cb1`:
+
+- [Branch build](https://github.com/MM-482/pov-android-tv/actions/runs/41580273993): built the source commit directly.
+- [Pull-request build](https://github.com/MM-482/pov-android-tv/actions/runs/41580308019): built GitHub's merge ref against the unchanged 0.3.0 baseline.
+
+Each ran `assembleDebug`, `testDebugUnitTest`, and `lintDebug`, then uploaded the regular debug APK and test/lint reports. The hosted logs confirm task success but do not print a total test count; **541 tests / 76 suites** remains the explicitly counted local result. The workflow does not build the side-by-side preview or import its retained development signing key. Use the separately delivered, verified **Cameo Preview** APK for the side-by-side test installation.
+
+The additional offline packaging scan checked **497 APK entries and 52,720 DEX strings** with no findings in the delivered APK. Its source scan initially identified 43 network-address literals in eight JVM test files. Review confirmed that these are deliberately synthetic/mock endpoint values or loopback test servers, with no user-device network evidence.
+
+The checker now classifies those reviewed fixtures by **exact source path and LF-normalized SHA-256**. Only Windows CRLF-to-LF conversion is tolerated; other content changes require review again. This classification applies only to the network-address rule in source archives. All credential, private-key, archive-path, and runtime-file checks remain active. The report records both the actual file hash and normalized review hash. The completed APK/source scan has no unresolved findings.
+
+All **18 checker self-tests** pass, including changed-content rejection, wrong-path/APK rejection, CRLF handling, and continued detection of secret material in a reviewed fixture. This packaging follow-up changes the checker and documentation only; Android application source, Kotlin tests, and the delivered APK remain the versions verified above. The scan is a heuristic review and does not replace live service or physical-device acceptance.
 
 ## APK identities
 

@@ -90,6 +90,8 @@ python scripts/verify-public-artifacts.py `
 
 This scanner is a separate local review tool, not an Android app or build dependency. Its report must pass for those exact artifacts. It checks detectable strings and archive entries without printing matched secret values, but does not prove every secret absent, perform image OCR, verify APK/source equivalence, or replace manual review. Keep the report in local `verification/`, outside public source exports.
 
+For Cameo 0.4.0, reviewed synthetic network fixtures are classified by exact test-source path and LF-normalized SHA-256. The classification covers only their network-address findings; all credential and archive checks still run. CRLF line endings from a Windows checkout are accepted, but other content changes invalidate the classification and require another source review. Never extend a fixture classification to account data or production configuration. The report records every classified file and its hashes. See [0.4.0 validation](VALIDATION_0.4.0.md#hosted-ci-and-packaging-follow-up).
+
 Before approving contents:
 
 - Review `git status --short` and `git diff --cached --name-only`.
