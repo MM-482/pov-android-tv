@@ -102,8 +102,10 @@ internal class TvChoiceRow(
     palette: ThemePalette = ThemeSpec.CINEMATIC.palette,
     action: () -> Unit,
 ) : FrameLayout(context) {
-    private fun px(value: Int) = (value * resources.displayMetrics.widthPixels / 960f).roundToInt().coerceAtLeast(1)
-    val cardHeight = px(if (eyebrow.isBlank()) 79 else 101)
+    private val television = AdaptiveLayout.isTelevision(context)
+    private fun px(value: Int) = (if (television) (value * resources.displayMetrics.widthPixels / 960f).roundToInt()
+        else AdaptiveLayout.dp(context, value)).coerceAtLeast(1)
+    val cardHeight = if (television) px(if (eyebrow.isBlank()) 79 else 101) else ViewGroup.LayoutParams.WRAP_CONTENT
     val gap = px(9)
     private val labels = mutableListOf<TextView>()
 
@@ -111,8 +113,9 @@ internal class TvChoiceRow(
         tag = key
         contentDescription = listOf(eyebrow, title, detail).filter(String::isNotBlank).joinToString(". ")
         isFocusable = true
-        isFocusableInTouchMode = true
+        isFocusableInTouchMode = television
         isClickable = true
+        if (!television) minimumHeight = px(88)
         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         val column = LinearLayout(context).apply {
@@ -124,10 +127,11 @@ internal class TvChoiceRow(
         }
         fun label(value: String, size: Int, lines: Int, bold: Boolean): TextView = TextView(context).apply {
             text = value
-            setTextSize(TypedValue.COMPLEX_UNIT_PX, px(size).toFloat())
+            if (television) setTextSize(TypedValue.COMPLEX_UNIT_PX, px(size).toFloat())
+            else setTextSize(TypedValue.COMPLEX_UNIT_SP, (size + 2).coerceAtLeast(12).toFloat())
             typeface = Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
             includeFontPadding = false
-            maxLines = lines
+            maxLines = if (television) lines else if (bold && lines > 1) 3 else if (!bold) 3 else lines
             ellipsize = TextUtils.TruncateAt.END
             isFocusable = false
             isClickable = false
@@ -140,7 +144,7 @@ internal class TvChoiceRow(
         if (eyebrow.isNotBlank()) column.addView(label(eyebrow, 10, 1, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(5) })
         column.addView(label(title, 14, 2, true), LinearLayout.LayoutParams(-1, -2))
         if (detail.isNotBlank()) column.addView(label(detail, 11, 1, false), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(5) })
-        addView(column, LayoutParams(-1, -1))
+        addView(column, LayoutParams(-1, if (television) -1 else -2))
         fun paint(focused: Boolean) {
             background = GradientDrawable().apply {
                 setColor(if (focused) palette.accent else palette.panel)
@@ -148,7 +152,8 @@ internal class TvChoiceRow(
             }
             foreground = FocusRingDrawable(if (focused) palette.accent else palette.border,
                 px(7).toFloat(), focused, px(if (focused) 2 else 1).toFloat())
-            labels.forEach { it.setTextColor(if (focused) Color.rgb(4, 15, 24) else palette.text) }
+            val focusText = if (Color.luminance(palette.accent) < .179f) Color.WHITE else Color.rgb(4, 15, 24)
+            labels.forEach { it.setTextColor(if (focused) focusText else palette.text) }
         }
         setOnFocusChangeListener { _, focused -> paint(focused) }
         setOnClickListener { action() }

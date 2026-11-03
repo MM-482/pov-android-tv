@@ -73,17 +73,21 @@ internal object SubtitleArchive {
     private val crossEpisodeTag = Regex("(?i)(?:^|[^a-z0-9])(\\d{1,2})x(\\d{1,3})(?:[ ._-]*-[ ._-]*(\\d{1,3}))?(?=$|[^0-9])")
 
     fun read(bytes: ByteArray, result: SubtitleResult): SubtitleFile {
+        return read(bytes, result.fileName, result.identity)
+    }
+
+    fun read(bytes: ByteArray, fileName: String, identity: PlaybackIdentity): SubtitleFile {
         if (bytes.isEmpty() || bytes.size > 8 * 1024 * 1024) throw SubtitleException("The subtitle download is empty or too large.")
         val entries = if (bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte()) unzip(bytes) else {
             val raw = if (bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {
                 GZIPInputStream(ByteArrayInputStream(bytes)).use { SubtitleHttp.boundedRead(it, MAX_FILE) }
             } else bytes
-            listOf(result.fileName.ifBlank { "subtitle.srt" } to raw)
+            listOf(fileName.ifBlank { "subtitle.srt" } to raw)
         }
         val eligible = entries.filter { subtitleExtension.containsMatchIn(it.first) }
             .ifEmpty { if (entries.size == 1) entries else emptyList() }
-        val exact = eligible.filter { basename(it.first).equals(basename(result.fileName), true) && result.fileName.isNotBlank() }
-        val matching = if (result.identity.type == "series") eligible.filter { tags(it.first).contains(result.identity.season to result.identity.episode) } else emptyList()
+        val exact = eligible.filter { basename(it.first).equals(basename(fileName), true) && fileName.isNotBlank() }
+        val matching = if (identity.type == "series") eligible.filter { tags(it.first).contains(identity.season to identity.episode) } else emptyList()
         val chosen = when {
             exact.size == 1 -> exact[0]
             matching.size == 1 -> matching[0]
@@ -91,7 +95,7 @@ internal object SubtitleArchive {
             eligible.isEmpty() -> throw SubtitleException("This download does not contain a supported SRT, VTT, or ASS subtitle.")
             else -> throw SubtitleException("This archive contains several subtitle files and the right file could not be identified. Choose another result or import a specific subtitle file.")
         }
-        if (explicitMismatch(chosen.first, result.identity)) throw SubtitleException("This subtitle archive contains a different episode. Choose another result.")
+        if (explicitMismatch(chosen.first, identity)) throw SubtitleException("This subtitle archive contains a different episode. Choose another result.")
         val text = decode(chosen.second).trimStart('\uFEFF')
         val extension = when {
             text.trimStart().startsWith("WEBVTT") -> "vtt"

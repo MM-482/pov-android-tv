@@ -114,7 +114,7 @@ class MdbListApi internal constructor(
         if (!movie(identity)) target.put("season", JSONObject().put("number", identity.season)
             .put("episode", JSONObject().put("number", identity.episode)))
         return JSONObject().put(if (movie(identity)) "movie" else "show", target)
-            .put("progress", percent.coerceIn(0.0, 100.0)).put("app_name", "POV Standalone")
+            .put("progress", percent.coerceIn(0.0, 100.0)).put("app_name", "Cameo")
     }
 
     private enum class Mode { NONE, CURSOR, OFFSET }

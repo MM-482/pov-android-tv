@@ -10,7 +10,7 @@ data class ProviderAccount(val provider: String, val label: String, val premium:
 data class ProviderFile(val id: String, val name: String, val size: Long = 0, val link: String = "", val direct: Boolean = false)
 data class ProviderFolder(val provider: String, val id: String, val name: String, val ready: Boolean,
     val files: List<ProviderFile> = emptyList(), val directory: Boolean = false)
-data class ProviderPlayback(val url: String, val headers: Map<String, String> = emptyMap())
+data class ProviderPlayback(val url: String, val headers: Map<String, String> = emptyMap(), val origin: String = "")
 data class ProviderPreparedSource(val playback: ProviderPlayback? = null, val files: List<ProviderFile> = emptyList(),
     val preferredFileId: String? = null, val folderId: String = "") {
     val automaticFile: ProviderFile? get() = files.singleOrNull()
@@ -84,6 +84,7 @@ internal interface ProviderBackend {
     fun files(token: String, folderId: String): List<ProviderFile>
     fun playback(token: String, file: ProviderFile): ProviderPlayback
     fun prepare(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource
+    fun prepareTransfer(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource = prepare(token, source, identity)
     fun resolve(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPlayback {
         val value = prepare(token, source, identity)
         value.playback?.let { return it }

@@ -3,7 +3,8 @@ package dev.pov.tv.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal class AllDebridProvider(private val http: ProviderTransport) : ProviderBackend {
+internal class AllDebridProvider(private val http: ProviderTransport,
+    private val waiting: ProviderPreparationWait = ProviderPreparationWait()) : ProviderBackend {
     private fun call(token: String, path: String, fields: List<Pair<String, String>>? = null): JSONObject {
         val value = providerObject(http.request("$BASE$path", if (fields == null) "GET" else "POST",
             mapOf("Authorization" to "Bearer $token"), fields))
@@ -37,22 +38,36 @@ internal class AllDebridProvider(private val http: ProviderTransport) : Provider
         if (children != null) flatten(children, "$name/") else listOf(ProviderFile(item.providerString("l"), name,
             item.optLong("s"), item.providerString("l")))
     }
-    override fun playback(token: String, file: ProviderFile): ProviderPlayback =
-        ProviderPlayback(providerHttps(call(token, "/v4/link/unlock", listOf("link" to providerHttps(file.link))).providerString("link")))
+    override fun playback(token: String, file: ProviderFile): ProviderPlayback {
+        val initial = call(token, "/v4/link/unlock", listOf("link" to providerHttps(file.link)))
+        val immediate = initial.providerString("link")
+        if (immediate.isNotBlank()) return ProviderPlayback(providerHttps(immediate))
+        val pending = initial.providerString("delayed")
+        check(pending.matches(Regex("[1-9][0-9]{0,17}"))) { "AllDebrid returned neither a playable link nor a valid pending-link ID." }
+        val link = waiting.await("AllDebrid", "pending-link-$pending") {
+            val current = call(token, "/v4/link/delayed", listOf("id" to pending))
+            when (current.optInt("status")) {
+                1 -> null
+                2 -> providerHttps(current.providerString("link"))
+                3 -> throw ApiException(0, "AllDebrid could not generate the selected file's download link.")
+                else -> throw ApiException(0, "AllDebrid returned an invalid pending-link status.")
+            }
+        }
+        return ProviderPlayback(link)
+    }
     override fun prepare(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource {
         val added = call(token, "/v4/magnet/upload", listOf("magnets[]" to providerHash(source.infoHash)))
             .optJSONArray("magnets")?.optJSONObject(0)
         val id = added?.providerString("id")?.takeIf { it.isNotBlank() }
             ?: throw ApiException(0, "AllDebrid could not add this source.")
-        repeat(12) {
+        return waiting.await("AllDebrid", id) {
             val data = call(token, "/v4.1/magnet/status", listOf("id" to id)).opt("magnets")
-            val status = if (data is JSONObject) data else (data as? JSONArray)?.optJSONObject(0)
-            if (status?.optInt("statusCode") == 4) return providerPrepared(files(token, id), source, identity, id)
+            val status = if (data is JSONObject) data else (data as? JSONArray)?.providerObjects()?.singleOrNull { it.providerString("id") == id }
+            check(status == null || status.providerString("id") == id) { "AllDebrid returned a different transfer." }
+            if (status?.optInt("statusCode") == 4) return@await providerPrepared(files(token, id), source, identity, id)
             if ((status?.optInt("statusCode", 0) ?: 0) >= 5) throw ApiException(0, "AllDebrid could not process this source.")
-            if (Thread.currentThread().isInterrupted) throw InterruptedException()
-            Thread.sleep(1500)
+            null
         }
-        throw ApiException(0, "This source is still processing in AllDebrid. It remains in your cloud; try it there when ready.")
     }
     companion object { private const val BASE = "https://api.alldebrid.com" }
 }

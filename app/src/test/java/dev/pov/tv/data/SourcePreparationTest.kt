@@ -64,6 +64,37 @@ class SourcePreparationTest {
         assertTrue(h.cloud.streamed.isEmpty())
     }
 
+    @Test fun `selected custom add-on movie and exact episode retain their original identities through TorBox`() {
+        val movieHarness = Harness()
+        movieHarness.cloud.files = listOf(file(7, "Movie.mkv"))
+        val customMovie = PlaybackIdentity("custom:movie:77", "movie", "Movie", addonId = "configured-addon")
+        val preparedMovie = movieHarness.resolver.prepare(source("Movie"), customMovie) as PreparedSource.Files
+        assertEquals(customMovie, preparedMovie.identity)
+        assertEquals(7L, preparedMovie.automaticFile?.id)
+
+        val episodeHarness = Harness()
+        episodeHarness.cloud.files = listOf(file(5, "Show.S02E03.mkv"), file(11, "Show.S02E04.mkv"))
+        val customEpisode = PlaybackIdentity("custom:show:42", "series", "Show", 2, 3,
+            sourceId = "video:exact:9988", addonId = "configured-addon")
+        val preparedEpisode = episodeHarness.resolver.prepare(source("Show.S02E03.mkv").copy(sourceId = customEpisode.sourceId),
+            customEpisode) as PreparedSource.Files
+        assertEquals(customEpisode, preparedEpisode.identity)
+        assertEquals(5L, preparedEpisode.automaticFile?.id)
+        assertEquals(1, episodeHarness.cloud.added)
+        assertTrue(episodeHarness.cloud.streamed.isEmpty())
+    }
+
+    @Test fun `custom episode preparation cannot guess a missing video identity or lose add-on provenance`() {
+        val h = Harness()
+        val exact = PlaybackIdentity("custom:show:42", "series", "Show", 2, 3,
+            sourceId = "video:exact:9988", addonId = "configured-addon")
+        listOf(exact.copy(sourceId = ""), exact.copy(addonId = ""), exact.copy(episode = 0)).forEach { identity ->
+            try { h.resolver.prepare(source("Show.S02E03.mkv"), identity); fail("Guessed custom identity accepted") }
+            catch (_: IllegalArgumentException) { }
+        }
+        assertEquals(0, h.cloud.added); assertEquals(0, h.cloud.lookedUp)
+    }
+
     @Test fun `samples trailers extras subtitles and metadata are excluded from file choices`() {
         val h = Harness()
         h.cloud.files = listOf(file(1, "sample.mkv"), file(2, "extras/interview.mp4"), file(3, "Movie.trailer.mp4"),

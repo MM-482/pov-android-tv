@@ -7,18 +7,60 @@
     <application android:allowBackup="false"
         android:fullBackupContent="@xml/backup_exclusions"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:icon="@drawable/pov_icon"
-        android:label="POV" android:banner="@drawable/pov_banner"
-        android:theme="@style/AppTheme" android:usesCleartextTraffic="false"
+        android:icon="@drawable/cameo_icon"
+        android:label="${cameoAppLabel}" android:banner="@drawable/cameo_banner"
+        android:theme="@style/AppTheme" android:usesCleartextTraffic="true"
         android:supportsRtl="true">
-        <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape"
+        <!-- User-configured LAN media servers may use HTTP; the per-request policy validates local destinations.
+             Public metadata and provider endpoints continue to use HTTPS. -->
+        <activity android:name=".PlayerActivity" android:exported="false" android:resizeableActivity="true"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
+        <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale" />
+        <activity-alias android:name=".CameoBlue" android:targetActivity=".MainActivity"
+            android:enabled="true" android:exported="true" android:label="${cameoAppLabel}"
+            android:icon="@drawable/cameo_icon" android:banner="@drawable/cameo_banner">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias android:name=".CameoViolet" android:targetActivity=".MainActivity"
+            android:enabled="false" android:exported="true" android:label="${cameoAppLabel}"
+            android:icon="@drawable/cameo_icon_violet" android:banner="@drawable/cameo_banner_violet">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".CameoPearl" android:targetActivity=".MainActivity"
+            android:enabled="false" android:exported="true" android:label="${cameoAppLabel}"
+            android:icon="@drawable/cameo_icon_pearl" android:banner="@drawable/cameo_banner_pearl">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".CameoGold" android:targetActivity=".MainActivity"
+            android:enabled="false" android:exported="true" android:label="${cameoAppLabel}"
+            android:icon="@drawable/cameo_icon_gold" android:banner="@drawable/cameo_banner_gold">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".CameoMint" android:targetActivity=".MainActivity"
+            android:enabled="false" android:exported="true" android:label="${cameoAppLabel}"
+            android:icon="@drawable/cameo_icon_mint" android:banner="@drawable/cameo_banner_mint">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

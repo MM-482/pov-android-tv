@@ -32,8 +32,23 @@ class ProviderHubTest {
     private val movie = PlaybackIdentity("tt1234567", "movie", "Example")
     private val source = SourceItem("Example", "Test", infoHash = "a".repeat(40))
 
-    @Test fun `provider list exactly matches original POV playback services`() {
-        assertEquals(setOf("torbox", "realdebrid", "alldebrid", "premiumize", "offcloud", "easynews"), ProviderHub.SPECS.map { it.id }.toSet())
+    @Test fun `direct LAN source preserves configured origin and headers but rejects unscoped HTTP`() {
+        val credentials = MemoryCredentials().apply { putAll(mapOf("realdebrid.token" to "account-fixture")) }
+        val hub = ProviderHub(credentials, FakeTransport { throw AssertionError("Direct sources must not reach provider transport") })
+        val direct = SourceItem("Local video", "LAN", directUrl = "http://192.168.1.10:8080/video.mkv",
+            headers = mapOf("X-Api-Key" to "addon-fixture"), origin = "http://192.168.1.10:8080")
+        val playback = hub.prepare("realdebrid", direct, movie).playback!!
+        assertEquals(direct.origin, playback.origin); assertEquals(direct.headers, playback.headers)
+        assertEquals(playback, hub.resolve("realdebrid", direct, movie))
+        listOf(direct.copy(origin = ""), direct.copy(origin = "http://192.168.1.11:8080"),
+            direct.copy(directUrl = "http://public.example/video", origin = "http://public.example")).forEach { invalid ->
+            try { hub.resolve("realdebrid", invalid, movie); fail("Untrusted direct HTTP accepted") }
+            catch (_: IllegalArgumentException) { }
+        }
+    }
+
+    @Test fun `provider list retains original services and includes desktop providers`() {
+        assertEquals(setOf("torbox", "realdebrid", "alldebrid", "premiumize", "offcloud", "easynews", "debridlink", "putio"), ProviderHub.SPECS.map { it.id }.toSet())
         assertTrue(ProviderHub.SPECS.single { it.id == "easynews" }.experimental)
     }
 
@@ -125,7 +140,7 @@ class ProviderHubTest {
     @Test fun `Real-Debrid preparation preserves versions without selecting or downloading files`() {
         val http = FakeTransport { request -> when {
             request.url.endsWith("/addMagnet") -> """{"id":"transfer"}"""
-            request.url.contains("/info/") -> """{"status":"waiting_files_selection","files":[{"id":3,"path":"Example.1080p.mkv","bytes":200},{"id":9,"path":"Example.2160p.mkv","bytes":400}]}"""
+            request.url.contains("/info/") -> """{"id":"transfer","status":"waiting_files_selection","files":[{"id":3,"path":"Example.1080p.mkv","bytes":200},{"id":9,"path":"Example.2160p.mkv","bytes":400}]}"""
             else -> throw AssertionError("Unexpected API operation")
         } }
         val prepared = RealDebridProvider(http).prepare("token", source, movie)
@@ -135,15 +150,17 @@ class ProviderHubTest {
     }
 
     @Test fun `Real-Debrid playback selects exactly the user chosen file`() {
+        var selected = false
         val http = FakeTransport { request -> when {
-            request.url.contains("/selectFiles/") -> { assertEquals(listOf("files" to "9"), request.fields); "" }
-            request.url.contains("/info/") -> """{"status":"downloaded","files":[{"id":3,"path":"Example.1080p.mkv","selected":0},{"id":9,"path":"Example.2160p.mkv","selected":1}],"links":["https://rd.example/chosen"]}"""
+            request.url.contains("/selectFiles/") -> { assertEquals(listOf("files" to "9"), request.fields); selected = true; "" }
+            request.url.contains("/info/") -> if (selected) """{"id":"transfer","status":"downloaded","files":[{"id":3,"path":"Example.1080p.mkv","selected":0},{"id":9,"path":"Example.2160p.mkv","selected":1}],"links":["https://rd.example/chosen"]}"""
+                else """{"id":"transfer","status":"waiting_files_selection","files":[{"id":3,"path":"Example.1080p.mkv","selected":0},{"id":9,"path":"Example.2160p.mkv","selected":0}]}"""
             request.url.endsWith("/unrestrict/link") -> { assertEquals(listOf("link" to "https://rd.example/chosen"), request.fields); """{"download":"https://cdn.example/chosen"}""" }
             else -> throw AssertionError("Unexpected API operation")
         } }
         val result = RealDebridProvider(http).playback("token", ProviderFile("transfer:9", "Example.2160p.mkv"))
         assertEquals("https://cdn.example/chosen", result.url)
-        assertEquals(3, http.requests.size)
+        assertEquals(4, http.requests.size)
     }
 
     @Test fun `AllDebrid nested files retain folder names and service links`() {
@@ -185,17 +202,25 @@ class ProviderHubTest {
         assertFalse(hub.connected("easynews"))
     }
 
-    @Test fun `Offcloud selected cached source returns all playable versions without creating a cloud transfer`() {
+    @Test fun `Offcloud explicit source creates one request and refreshes the exact chosen file`() {
         val http = FakeTransport { request ->
             assertEquals("offcloud.com", URI(request.url).host)
-            assertTrue(request.url.contains("/api/cache/download?key="))
-            """[{"filename":"Example.1080p.mkv","size":200,"url":"https://cdn.example/one"},{"filename":"Example.2160p.mkv","size":400,"url":"https://cdn.example/two"}]"""
+            assertTrue(request.url.contains("key=token"))
+            if (URI(request.url).path == "/api/cloud") {
+                assertEquals("POST", request.method)
+                assertEquals(listOf("url" to "magnet:?xt=urn:btih:${"a".repeat(40)}"), request.fields)
+                """{"requestId":"request-7","status":"downloaded"}"""
+            } else {
+                assertEquals("/api/cloud/explore/request-7", URI(request.url).path)
+                """[{"filename":"Example.1080p.mkv","size":200,"url":"https://cdn.example/one"},{"filename":"Example.2160p.mkv","size":400,"url":"https://cdn.example/two"}]"""
+            }
         }
         val prepared = OffcloudProvider(http).prepare("token", source, movie)
         assertEquals(2, prepared.files.size)
         assertNull(prepared.automaticFile)
         assertEquals("https://cdn.example/two", OffcloudProvider(http).playback("token", prepared.files[1]).url)
-        assertEquals(1, http.requests.size)
+        assertEquals(1, http.requests.count { URI(it.url).path == "/api/cloud" })
+        assertEquals(3, http.requests.size)
     }
 
     @Test fun `Easynews playback credential stays in scoped headers and cannot escape provider domain`() {

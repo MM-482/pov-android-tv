@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
@@ -29,7 +30,7 @@ import java.util.Locale
 
 /** Native ownership stays with the session, never with either borrowing Activity. */
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
+internal class NativeVlcDriver(context: Context, private var captions: CaptionAppearance = CaptionAppearance()) : VlcPlaybackDriver {
     private val app = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
     // Avoid native verbose logs containing signed playback URLs or provider credentials.
@@ -44,6 +45,9 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     private var loading = false
     private var readyForTracks = false
     private var normalVolume = 100
+    private var normalRate = 1f
+    private var subtitleOffset = 0L
+    private var document: ParcelFileDescriptor? = null
     private var outputCallback: IVLCVout.Callback? = null
     private val outputBinding = VlcOutputBinding { if (!closed) native.setVideoTrackEnabled(true) }
     private var voutCount = 0
@@ -79,6 +83,8 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
                     MediaPlayer.Event.Buffering -> { loading = event.buffering < 100f; VlcEvent.BUFFERING }
                     MediaPlayer.Event.Playing -> {
                         loading = false; readyForTracks = true
+                        native.rate = normalRate
+                        if (subtitleOffset != 0L) native.setSpuDelay(subtitleOffset * 1000)
                         native.audioTrack.takeIf { it >= 0 }?.let { defaultTracks.putIfAbsent(C.TRACK_TYPE_AUDIO, it) }
                         defaultTracks.putIfAbsent(C.TRACK_TYPE_TEXT, native.spuTrack)
                         applyDesiredTracks(); VlcEvent.READY
@@ -120,9 +126,17 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
 
     override fun open(item: MediaItem, subtitleLanguage: String) {
         native.stop(); readyForTracks = false; desiredTracks.clear(); defaultTracks.clear(); size = VideoSize.UNKNOWN
-        val media = Media(library, requireNotNull(item.localConfiguration).uri)
+        document?.let { runCatching { it.close() } }; document = null
+        val uri = requireNotNull(item.localConfiguration).uri
+        val media = if (uri.scheme == "content") {
+            val opened = app.contentResolver.openFileDescriptor(uri, "r")
+                ?: throw IllegalArgumentException("The selected video document could not be opened.")
+            document = opened
+            Media(library, opened.fileDescriptor)
+        } else Media(library, uri)
         try {
             media.setHWDecoderEnabled(true, false)
+            captions.vlcOptions().forEach(media::addOption)
             if (subtitleLanguage.isNotBlank()) media.addOption(":sub-language=${languageAlternatives(subtitleLanguage)}")
             item.localConfiguration?.subtitleConfigurations?.forEach {
                 media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 4, it.uri.toString()))
@@ -141,6 +155,33 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     override fun setVolume(volume: Float) {
         normalVolume = (volume.coerceIn(0f, 1f) * 100).toInt()
         native.setVolume(normalVolume)
+    }
+
+    override fun setRate(speed: Float) {
+        normalRate = speed.coerceIn(.5f, 2f)
+        if (!closed && readyForTracks) native.rate = normalRate
+    }
+    override val subtitleDelayMillis: Long get() = subtitleOffset
+    override fun setSubtitleDelayMillis(value: Long): Boolean {
+        if (closed) return false
+        val offset = value.coerceIn(-120_000, 120_000)
+        if (readyForTracks && !native.setSpuDelay(offset * 1000)) return false
+        subtitleOffset = offset
+        return true
+    }
+    override fun configureCaptions(appearance: CaptionAppearance) { captions = appearance }
+    override val chapterIndex: Int get() = if (closed || !readyForTracks) -1 else native.chapter
+    override fun chapters(): List<PlaybackChapter> {
+        if (closed || !readyForTracks) return emptyList()
+        return native.getChapters(-1)?.take(200)?.mapIndexed { index, chapter ->
+            PlaybackChapter(index, chapter.name?.takeIf(String::isNotBlank)?.take(200) ?: "Chapter ${index + 1}",
+                chapter.timeOffset.coerceAtLeast(0), chapter.duration.coerceAtLeast(0))
+        } ?: emptyList()
+    }
+    override fun selectChapter(index: Int): Boolean {
+        if (chapters().none { it.index == index }) return false
+        native.chapter = index
+        return true
     }
 
     override fun tracks(): List<VlcTrack> {
@@ -262,6 +303,7 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
         if (closed) return
         detach(); closed = true; listener = null
         native.setEventListener(null); native.stop(); native.release(); library.release()
+        document?.let { runCatching { it.close() } }; document = null
         app.unregisterReceiver(noisyReceiver); abandonFocus()
     }
 

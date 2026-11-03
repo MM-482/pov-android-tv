@@ -28,7 +28,7 @@ import java.util.Locale
 
 /** Exercises real native shell/home trees; image loading and all navigation/playback calls are fakes. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class ConceptThemeRenderTest {
     private val concepts = listOf(ThemeSpec.GLASS, ThemeSpec.ESSENTIAL, ThemeSpec.PREMIERE, ThemeSpec.ATELIER, ThemeSpec.HORIZON, ThemeSpec.STUDIO)
@@ -38,12 +38,12 @@ class ConceptThemeRenderTest {
     private val otherEpisode = PlaybackIdentity("tt0944947", "series", "Other Series Fixture", 2, 4)
 
     @Test fun `all six native home compositions keep feature actions title cards and footer inside viewport`() {
-        assertEquals(concepts, ThemeSpec.selectableThemes)
+        assertEquals(listOf(ThemeSpec.GLASS, ThemeSpec.PREMIERE, ThemeSpec.ESSENTIAL, ThemeSpec.ATELIER, ThemeSpec.HORIZON), ThemeSpec.selectableThemes)
         concepts.forEach { theme -> fixture(theme).use { screen -> assertVisibleComposition(screen) } }
     }
 
     @Test
-    @Config(qualifiers = "w800dp-h450dp-land-mdpi")
+    @Config(qualifiers = "w800dp-h450dp-land-television-mdpi")
     fun `smaller sixteen by nine TVs retain usable native geometry for all six concepts`() {
         concepts.forEach { theme -> fixture(theme).use { screen ->
             assertEquals(800, screen.shell.root.width)

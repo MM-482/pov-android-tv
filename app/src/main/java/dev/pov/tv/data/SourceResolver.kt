@@ -8,7 +8,11 @@ import org.json.JSONObject
 class SourceResolver internal constructor(
     private val sourceEndpoint: () -> String,
     private val torbox: SourceTorBox,
-    private val publicJson: (String) -> JSONObject = { Net.json(it) },
+    private val publicJson: (String) -> JSONObject = { address ->
+        val bytes = LiveCameoServiceTransport.publicBytes(address, CameoServiceUrls.origin(address))
+        try { JSONObject(bytes.toString(Charsets.UTF_8)) }
+        catch (_: Exception) { throw ApiException(0, "The source provider returned an unreadable response.") }
+    },
     private val monotonicNanos: () -> Long = System::nanoTime,
     private val pause: (Long) -> Unit = Thread::sleep
 ) {
@@ -22,12 +26,15 @@ class SourceResolver internal constructor(
     private fun sourceChoices(identity: PlaybackIdentity, checkTorBox: Boolean, expectedRevision: String? = null): List<SourceItem> {
         validateIdentity(identity)
         val cacheRevision = if (checkTorBox) expectedRevision ?: torbox.accountRevision() else null
-        val endpoint = endpoint(sourceEndpoint())
-        val id = if (identity.type == "series") {
+        val endpoint = normalizeEndpoint(sourceEndpoint())
+        val id = identity.sourceId.ifBlank { if (identity.type == "series") {
             "${identity.imdbId}:${identity.season}:${identity.episode}"
-        } else identity.imdbId
+        } else identity.imdbId }
+        require(RESOURCE_ID.matches(id)) { "This title has no supported source identity." }
         val payload = try {
-            publicJson("$endpoint/stream/${identity.type}/$id.json")
+            publicJson("$endpoint/stream/${identity.type}/${Net.encode(id)}.json")
+        } catch (error: InterruptedException) {
+            throw error
         } catch (_: Exception) {
             throw IllegalStateException("The source provider could not be reached. Try again or check the source endpoint in Settings.")
         }
@@ -35,10 +42,12 @@ class SourceResolver internal constructor(
         val provider = URI(endpoint).host
         val choices = (0 until minOf(streams.length(), 300)).mapNotNull { index ->
             val stream = streams.optJSONObject(index) ?: return@mapNotNull null
-            // Header-dependent URLs cannot be represented by SourceItem yet; never silently discard headers.
-            if (stream.optJSONObject("behaviorHints")?.optJSONObject("proxyHeaders") != null) return@mapNotNull null
             val hash = stream.optString("infoHash").lowercase(Locale.ROOT).takeIf(HASH::matches).orEmpty()
-            val direct = stream.optString("url").takeIf(::isHttps).orEmpty()
+            val direct = try {
+                val value = stream.optString("url")
+                val uri = CameoServiceUrls.addonResource(value, endpoint)
+                uri.scheme.lowercase(Locale.ROOT) + value.substring(value.indexOf(':'))
+            } catch (_: IllegalArgumentException) { "" }
             if (hash.isBlank() && direct.isBlank()) return@mapNotNull null
             val description = stream.optString("description").ifBlank { stream.optString("title") }
             val filename = stream.optJSONObject("behaviorHints")?.optString("filename").orEmpty()
@@ -57,7 +66,10 @@ class SourceResolver internal constructor(
                 fileIndex = fileIndex,
                 directUrl = direct,
                 detail = listOf(stream.optString("name"), description.lineSequence().drop(1).joinToString(" · "))
-                    .filter { it.isNotBlank() }.joinToString(" · ").take(800)
+                    .filter { it.isNotBlank() }.joinToString(" · ").take(800),
+                headers = requestHeaders(stream.optJSONObject("behaviorHints")?.optJSONObject("proxyHeaders")?.optJSONObject("request")),
+                sourceId = id,
+                origin = if (direct.isBlank()) "" else CameoServiceUrls.origin(if (direct.startsWith("http://")) endpoint else direct)
             )
         }.distinctBy { Triple(it.infoHash, it.fileIndex, it.directUrl) }
         if (!checkTorBox) return choices.map { it.copy(cached = false) }
@@ -82,7 +94,7 @@ class SourceResolver internal constructor(
 
     /** Called only after the user selects a source. May add that source to the user's TorBox library. */
     fun prepare(source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): PreparedSource {
-        validateIdentity(identity)
+        validateSelectedIdentity(identity)
         val revision = expectedRevision ?: torbox.accountRevision()
         if (expectedRevision != null && torbox.accountRevision() != expectedRevision) {
             throw ApiException(401, "The TorBox account changed. Reopen this source or cloud folder.")
@@ -92,8 +104,10 @@ class SourceResolver internal constructor(
             "This source identifies a different episode. Choose another source."
         }
         if (source.directUrl.isNotBlank()) {
-            require(isHttps(source.directUrl)) { "Only HTTPS video sources are supported." }
-            return PreparedSource.Direct(source.directUrl, identity)
+            val target = CameoServiceUrls.addonResource(source.directUrl, source.origin)
+            val url = target.scheme.lowercase(Locale.ROOT) + source.directUrl.substring(source.directUrl.indexOf(':'))
+            val origin = CameoServiceUrls.origin(if (target.scheme.equals("http", true)) source.origin else url)
+            return PreparedSource.Direct(url, identity, source.headers, origin)
         }
         val hash = source.infoHash.lowercase(Locale.ROOT)
         require(HASH.matches(hash)) { "The selected source has no valid torrent hash." }
@@ -128,7 +142,12 @@ class SourceResolver internal constructor(
     fun resolve(source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): String {
         val revision = expectedRevision ?: torbox.accountRevision()
         return when (val prepared = prepare(source, identity, revision)) {
-            is PreparedSource.Direct -> prepared.url
+            is PreparedSource.Direct -> {
+                check(prepared.headers.isEmpty() && isHttps(prepared.url)) {
+                    "This source needs its request headers or local server origin. Use the prepared playback request."
+                }
+                prepared.url
+            }
             is PreparedSource.Files -> {
                 val file = prepared.automaticFile ?: throw IllegalStateException("This source contains multiple video versions. Choose a video file before playing.")
                 val url = torbox.forRevision(revision).streamUrl(prepared.folder.kind, prepared.folder.id, file.id)
@@ -140,18 +159,26 @@ class SourceResolver internal constructor(
 
     private fun validateIdentity(identity: PlaybackIdentity) {
         require(IMDB_ID.matches(identity.imdbId)) { "This title has no supported IMDb identifier." }
+        validateMediaSelection(identity)
+    }
+
+    /** A selected add-on source already supplies its exact media identity and torrent hash. */
+    private fun validateSelectedIdentity(identity: PlaybackIdentity) {
+        val imdb = IMDB_ID.matches(identity.imdbId)
+        require(imdb || identity.addonId.isNotBlank() && RESOURCE_ID.matches(identity.imdbId)) {
+            "This title has no supported catalog identity."
+        }
+        validateMediaSelection(identity)
+        require(imdb || identity.type != "series" || RESOURCE_ID.matches(identity.sourceId)) {
+            "Select the exact add-on episode before preparing its source."
+        }
+    }
+
+    private fun validateMediaSelection(identity: PlaybackIdentity) {
         require(identity.type == "movie" || identity.type == "series") { "This media type is not supported." }
         require(identity.type != "series" || (identity.season >= 0 && identity.episode > 0)) {
             "Choose an episode before searching for sources."
         }
-    }
-
-    private fun endpoint(value: String): String {
-        val candidate = value.trim().ifEmpty { DEFAULT_ENDPOINT }.removeSuffix("/").removeSuffix("/manifest.json")
-        require(candidate.length <= 4_096 && isHttps(candidate)) { "Enter a valid HTTPS Stremio add-on endpoint." }
-        val uri = URI(candidate)
-        require(uri.query == null && uri.fragment == null) { "Use the add-on base URL or manifest URL, without a query or fragment." }
-        return candidate.trimEnd('/')
     }
 
     private fun isHttps(value: String): Boolean = try {
@@ -159,10 +186,38 @@ class SourceResolver internal constructor(
         uri.scheme.equals("https", true) && !uri.host.isNullOrBlank() && uri.userInfo == null
     } catch (_: Exception) { false }
 
-    private companion object {
-        const val DEFAULT_ENDPOINT = "https://torrentio.strem.fun"
-        val HASH = Regex("[a-f0-9]{40}")
-        val IMDB_ID = Regex("tt[0-9]{5,12}")
+    companion object {
+        private const val DEFAULT_ENDPOINT = "https://torrentio.strem.fun"
+        private val HASH = Regex("[a-f0-9]{40}")
+        private val IMDB_ID = Regex("tt[0-9]{5,12}")
+        private val RESOURCE_ID = Regex("[A-Za-z0-9][A-Za-z0-9:_.-]{0,499}")
+        private val HEADER_NAME = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+        private val TRANSPORT_HEADERS = setOf("host", "connection", "content-length", "transfer-encoding", "trailer", "te",
+            "upgrade", "proxy-connection", "proxy-authenticate", "proxy-authorization", "expect", "range", "accept-encoding")
+
+        /** Syntax-only validation; the HTTP transport checks private DNS addresses before connecting. */
+        fun normalizeEndpoint(value: String): String {
+            var candidate = value.trim().ifEmpty { DEFAULT_ENDPOINT }.trimEnd('/')
+            if (candidate.startsWith("stremio://", true)) candidate = "https://" + candidate.substring(10)
+            if (candidate.endsWith("/manifest.json", true)) candidate = candidate.dropLast(14)
+            require(candidate.length <= 4_096) { "The source provider address is too long." }
+            val uri = CameoServiceUrls.checked(candidate)
+            require(uri.query == null && uri.fragment == null) { "Use the add-on base URL or manifest URL, without a query or fragment." }
+            return (uri.scheme.lowercase(Locale.ROOT) + candidate.substring(candidate.indexOf(':'))).trimEnd('/')
+        }
+
+        internal fun requestHeaders(requested: JSONObject?): Map<String, String> {
+            if (requested == null) return emptyMap()
+            val headers = linkedMapOf<String, String>()
+            val names = mutableSetOf<String>()
+            requested.keys().asSequence().forEach { key ->
+                val normalized = key.lowercase(Locale.ROOT)
+                val value = requested.opt(key) as? String
+                if (headers.size < 64 && key.length <= 128 && HEADER_NAME.matches(key) && normalized !in TRANSPORT_HEADERS &&
+                    value != null && value.length <= 16_384 && value.none(Char::isISOControl) && names.add(normalized)) headers[key] = value
+            }
+            return headers
+        }
     }
 }
 

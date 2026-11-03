@@ -73,6 +73,23 @@ class PlaybackLaunchGuardTest {
     @Test fun `Start over releases guard when protected request validation fails`() =
         failedLaunch(startOver = true, historyFails = false)
 
+    @Test fun `custom addon videos keep independent resume positions while existing keys remain readable`() {
+        val fixture = fixture()
+        try {
+            fixture.activity.getSharedPreferences("playback", Context.MODE_PRIVATE).edit().clear().commit()
+            val history = PlaybackStore(fixture.activity)
+            fun resumeKey(value: PlaybackIdentity) = invoke(fixture.activity, "mediaKey", arrayOf(PlaybackIdentity::class.java), value) as String
+            val first = PlaybackIdentity("custom:show", "series", "Fixture", sourceId = "video:first", addonId = "catalog-a")
+            val second = first.copy(sourceId = "video:second")
+            val anotherAddon = first.copy(addonId = "catalog-b")
+            history.save(resumeKey(first), first.title, first, 120_000, 600_000)
+            assertEquals(120_000L, history.resume(resumeKey(first)))
+            assertEquals(0L, history.resume(resumeKey(second)))
+            assertEquals(0L, history.resume(resumeKey(anotherAddon)))
+            assertEquals("media:tt1234567:0:0", resumeKey(identity))
+        } finally { fixture.close() }
+    }
+
     private fun failedLaunch(startOver: Boolean, historyFails: Boolean) {
         val fixture = fixture()
         try {

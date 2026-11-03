@@ -82,29 +82,40 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
     /** Caller must compare the captured account revision before presenting the resolved result. */
     fun resolve(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): ProviderPlayback = session(id, expectedRevision) { account ->
         val token = account.token
-        if (source.directUrl.isNotBlank()) return@session ProviderPlayback(providerHttps(source.directUrl))
+        if (source.directUrl.isNotBlank()) return@session directPlayback(source)
         when (id) {
             "torbox" -> ProviderPlayback(snapshotResolver(account).resolve(source, identity))
             "easynews" -> throw ApiException(0, "Choose an Easynews search result to play it.")
             else -> backend(id, account).resolve(token, source, identity)
         }
     }
-    fun prepare(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): ProviderPreparedSource = session(id, expectedRevision) { account ->
+    fun prepare(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null,
+        persistTransfer: Boolean = false): ProviderPreparedSource = session(id, expectedRevision) { account ->
         val token = account.token
-        if (source.directUrl.isNotBlank()) return@session ProviderPreparedSource(playback = ProviderPlayback(providerHttps(source.directUrl)))
+        if (source.directUrl.isNotBlank()) return@session ProviderPreparedSource(playback = directPlayback(source))
         when (id) {
             "torbox" -> when (val value = snapshotResolver(account).prepare(source, identity)) {
-                is PreparedSource.Direct -> ProviderPreparedSource(playback = ProviderPlayback(value.url))
+                is PreparedSource.Direct -> ProviderPreparedSource(playback = ProviderPlayback(value.url, value.headers, value.origin))
                 is PreparedSource.Files -> ProviderPreparedSource(files = value.files.map {
                     ProviderFile("${value.folder.kind}:${value.folder.id}:${it.id}", it.name, it.size)
-                }, preferredFileId = value.preferredFileId?.let { "${value.folder.kind}:${value.folder.id}:$it" })
+                }, preferredFileId = value.preferredFileId?.let { "${value.folder.kind}:${value.folder.id}:$it" },
+                    folderId = "${value.folder.kind}:${value.folder.id}")
             }
             "easynews" -> throw ApiException(0, "Choose an Easynews search result to play it.")
-            else -> backend(id, account).prepare(token, source, identity)
+            else -> if (persistTransfer) backend(id, account).prepareTransfer(token, source, identity)
+                else backend(id, account).prepare(token, source, identity)
         }
     }
     fun searchEasynews(identity: PlaybackIdentity, expectedRevision: String? = null): List<ProviderFile> = session("easynews", expectedRevision) { account ->
         EasynewsProvider(sessionHttp("easynews", account)).search(account.token, account.username, identity)
+    }
+    private fun directPlayback(source: SourceItem): ProviderPlayback {
+        if (!source.directUrl.startsWith("http://", true)) {
+            val address = providerHttps(source.directUrl)
+            return ProviderPlayback(address, source.headers, if (source.origin.isNotBlank()) CameoServiceUrls.origin(address) else "")
+        }
+        val target = CameoServiceUrls.addonResource(source.directUrl, source.origin)
+        return ProviderPlayback(target.toString(), source.headers, CameoServiceUrls.origin(source.origin))
     }
     private fun state(id: String, expectedRevision: String? = null): Session = synchronized(lock(id)) {
         val account = Session(credentials.get("$id.token"), credentials.get("$id.username"), credentials.get("$id.account_revision"))
@@ -136,6 +147,8 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
             "alldebrid" -> AllDebridProvider(http)
             "premiumize" -> PremiumizeProvider(http)
             "offcloud" -> OffcloudProvider(http)
+            "debridlink" -> DebridLinkProvider(http)
+            "putio" -> PutIoProvider(http)
             else -> throw IllegalArgumentException("Unsupported provider.")
         }
     }
@@ -164,6 +177,8 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
             ProviderSpec("alldebrid", "AllDebrid", "API key", "https://alldebrid.com/apikeys/", true, true),
             ProviderSpec("premiumize", "Premiumize", "API key", "https://www.premiumize.me/account", true, true),
             ProviderSpec("offcloud", "Offcloud", "API key", "https://offcloud.com/#/account", true, true),
+            ProviderSpec("debridlink", "Debrid-Link", "API key", "https://debrid-link.com/webapp/apikey", true, true),
+            ProviderSpec("putio", "put.io", "Access token", "https://app.put.io/account/api", true, true),
             ProviderSpec("easynews", "Easynews", "Password", "https://members.easynews.com/", false, false, true))
         private val LOCKS = SPECS.associate { it.id to Any() }
     }

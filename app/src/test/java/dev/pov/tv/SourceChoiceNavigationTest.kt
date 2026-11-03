@@ -24,7 +24,7 @@ import org.robolectric.annotation.LooperMode
 
 /** The reported movie-version bug involves tall multiline cards, not short episode buttons. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class SourceChoiceNavigationTest {
     private lateinit var activity: Activity

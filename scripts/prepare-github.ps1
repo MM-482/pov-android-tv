@@ -19,7 +19,7 @@ foreach ($file in $sourceFiles) {
     New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
     Copy-Item -LiteralPath $file.FullName -Destination $target
 }
-foreach ($name in @("POV-Android-TV-$version-preview.apk", "POV-Android-TV-$version-source.zip", 'SHA256SUMS.txt')) {
+foreach ($name in @("Cameo-Android-$version-preview.apk", "Cameo-Android-$version-source.zip", 'SHA256SUMS.txt')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "dist\$name") -Destination (Join-Path $releaseRoot $name)
 }
 $manifest = Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | ForEach-Object {

@@ -58,8 +58,11 @@ class ConceptShellRenderer(private val context: Context, private val theme: Them
             }
             ui.place(root,rail,profile.railX,profile.railY,profile.railWidth,profile.railHeight)
         }
-        val logo=ImageView(context).apply { setImageResource(R.drawable.pov_wordmark);scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="POV" }
-        ui.place(root,logo,profile.logoX,profile.logoY,profile.logoWidth,profile.logoHeight)
+        val logo=ui.text("Cameo",24,theme.palette.text,true).apply {
+            gravity=Gravity.CENTER_VERTICAL;maxLines=1;contentDescription="Cameo";letterSpacing=-.025f
+            setAutoSizeTextTypeUniformWithConfiguration(ui.px(16).coerceAtLeast(1),ui.px(26).coerceAtLeast(2),1,TypedValue.COMPLEX_UNIT_PX)
+        }
+        ui.place(root,logo,profile.logoX,profile.logoY,profile.logoWidth+24,profile.logoHeight)
 
         val navigation=linkedMapOf<String,View>()
         val primary=destinations.filter { it.key !in setOf("trakt","nowplaying") }

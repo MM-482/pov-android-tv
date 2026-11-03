@@ -52,10 +52,10 @@ data class ConceptThemeProfile(
 internal fun conceptPalette(id: String): ThemePalette {
     val light = id == "atelier"
     val warm = id == "premiere"
-    val accent = when (id) { "glass" -> 0xFFFCFDFC; "premiere" -> 0xFFF4DFAB; "atelier" -> 0xFF212125; "horizon" -> 0xFF6BF7FF; "studio" -> 0xFF02E2FB; else -> 0xFF00EBFE }.toInt()
-    val background=when(id){"glass"->0xFF030710;"essential"->0xFF080F1D;"premiere"->0xFF000102;"atelier"->0xFFFBF6F0;"horizon"->0xFF010308;else->0xFF0B0F15}.toInt()
-    val panel=when(id){"glass"->0xFF232633;"essential"->0xFF263143;"premiere"->0xFF1F1C1A;"atelier"->0xFFECE3D9;"horizon"->0xFF0A1220;else->0xFF1C2028}.toInt()
-    val progress=when(id){"glass"->0xFF36E7FA;"essential"->0xFF05EDF6;"premiere"->0xFFEBCE9C;"atelier"->0xFFEDD6BF;"horizon"->0xFF59CCF8;else->0xFF02CDFA}.toInt()
+    val accent = when (id) { "glass" -> 0xFFFCFDFC; "premiere" -> 0xFFF4DFAB; "essential" -> 0xFF6FE1B4; "atelier" -> 0xFF365A89; "horizon" -> 0xFF6BF7FF; "studio" -> 0xFF02E2FB; else -> 0xFF00EBFE }.toInt()
+    val background=when(id){"glass"->0xFF030710;"essential"->0xFF11171C;"premiere"->0xFF000102;"atelier"->0xFFFBF6F0;"horizon"->0xFF100C21;else->0xFF0B0F15}.toInt()
+    val panel=when(id){"glass"->0xFF232633;"essential"->0xFF1D252B;"premiere"->0xFF1F1C1A;"atelier"->0xFFECE3D9;"horizon"->0xFF1B1531;else->0xFF1C2028}.toInt()
+    val progress=when(id){"glass"->0xFF36E7FA;"essential"->0xFF6FE1B4;"premiere"->0xFFEBCE9C;"atelier"->0xFF365A89;"horizon"->0xFF59CCF8;else->0xFF02CDFA}.toInt()
     return ThemePalette(
         background=background,panel=panel,
         text=(if(light) 0xFF24242A else if(warm) 0xFFFFF7E6 else 0xFFF4F6FC).toInt(),
@@ -63,8 +63,8 @@ internal fun conceptPalette(id: String): ThemePalette {
         accent=accent,secondaryAccent=(if(warm) 0xFFEBA23E else if(light) 0xFFAA7755 else 0xFFBA44FF).toInt(),
         buttonText=(if(light) 0xFFFFFFFF else 0xFF03070A).toInt(),
         border=(if(light) 0xFFD9D0C5 else 0xFF2B394A).toInt(),
-        navSelected=(if(light) 0xFFECE3D8 else if(warm) 0xFF1A150C else 0xFF102437).toInt(),
-        progress=progress,primaryButton=if(id=="studio")0xFF01C4FE.toInt() else if(light)0xFF2C292D.toInt() else accent)
+        navSelected=(if(light) 0xFFE0E7EF else if(warm) 0xFF1A150C else if(id=="essential") 0xFF243B33 else if(id=="horizon") 0xFF302348 else 0xFF102437).toInt(),
+        progress=progress,primaryButton=if(id=="studio")0xFF01C4FE.toInt() else accent)
 }
 
 internal fun conceptLayout(id: String): ThemeLayout {

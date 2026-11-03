@@ -21,7 +21,7 @@ import java.util.concurrent.ExecutorService
 
 /** Actual native title menu, with no MainActivity.onCreate, player, or account requests. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class ContinueWatchingMenuTest {
     private val identity = PlaybackIdentity("tt0903747", "series", "Breaking Bad", 1, 2)

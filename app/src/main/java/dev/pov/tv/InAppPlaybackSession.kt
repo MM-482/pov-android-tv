@@ -9,6 +9,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.graphics.Color
+import android.graphics.Typeface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -20,6 +23,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
@@ -34,12 +38,14 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.CaptionStyleCompat
 import dev.pov.tv.data.PlaybackIdentity
 import dev.pov.tv.data.SecureStore
 import dev.pov.tv.data.TraktApi
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -57,6 +63,8 @@ object InAppPlaybackSession {
     private lateinit var trakt: TraktApi
     private var sourceUrl = ""
     private var sourceHeaders: Map<String, String> = emptyMap()
+    private var sourceRequest: SameOriginMediaRequest? = null
+    private var sourceRequestToken: String? = null
     private var sourceKey = ""
     private var identity: PlaybackIdentity? = null
     var title: String = ""
@@ -93,8 +101,29 @@ object InAppPlaybackSession {
     private var lastSyncAt = 0L
     private var resumeAfterBackground = false
     private var backgroundPause = false
+    private var appInBackground = false
     private val listeners = linkedSetOf<() -> Unit>()
     private val handler = Handler(Looper.getMainLooper())
+    private var previousQueueAction: (() -> Unit)? = null
+    private var nextQueueAction: (() -> Unit)? = null
+    private var endedAction: (() -> Unit)? = null
+    private var endNotified = false
+    private val sleepTimer = PlaybackSleepTimer(SystemClock::elapsedRealtime,
+        schedule = { task, delay -> handler.postDelayed(task, delay) }, cancel = handler::removeCallbacks,
+        onExpired = {
+            resumeAfterBackground = false
+            player?.pause()
+            saveLocal()
+            notifyChanged()
+        })
+    val sleepRemainingMillis: Long? get() = sleepTimer.remainingMillis
+    val canGoPrevious: Boolean get() = previousQueueAction != null
+    val canGoNext: Boolean get() = nextQueueAction != null
+    val playbackSpeed: Float get() = player?.playbackParameters?.speed ?: 1f
+    val captionAppearance: CaptionAppearance get() = application?.let { PlaybackPreferences(it).captionAppearance } ?: CaptionAppearance()
+    internal val supportsSubtitleTiming: Boolean get() = player is LibVlcPlayer
+    internal val subtitleDelayMillis: Long get() = (player as? LibVlcPlayer)?.subtitleDelayMillis ?: 0L
+    internal val currentChapterIndex: Int get() = (player as? LibVlcPlayer)?.currentChapterIndex ?: -1
     private val surfaceAttachment = SurfaceReadyAttachment<Player, PlayerView>(
         currentSession = { player?.takeUnless { releasing } },
         isReady = { view ->
@@ -164,6 +193,7 @@ object InAppPlaybackSession {
         override fun run() {
             if (player == null || releasing) return
             saveLocal()
+            if (sleepTimer.deadline != null) notifyChanged()
             handler.postDelayed(this, 15_000)
         }
     }
@@ -171,6 +201,7 @@ object InAppPlaybackSession {
         schedule = { handler.postDelayed(it, 350) },
         cancel = { handler.removeCallbacks(it) },
         onBackground = {
+            appInBackground = true
             val current = player
             resumeAfterBackground = current != null && current.playWhenReady &&
                 current.playbackState != Player.STATE_ENDED && current.playerError == null && error == null
@@ -180,6 +211,8 @@ object InAppPlaybackSession {
             handler.removeCallbacks(checkpoint)
         },
         onForeground = {
+            appInBackground = false
+            sleepTimer.expireIfDue()
             if (resumeAfterBackground && error == null && player?.playerError == null && player?.playbackState != Player.STATE_ENDED) player?.play()
             resumeAfterBackground = false
             restartCheckpoint()
@@ -209,24 +242,99 @@ object InAppPlaybackSession {
 
     fun prepareRequest(url: String, headers: Map<String, String>): String = ProtectedPlaybackRequests.add(url, headers)
 
+    fun prepareMediaRequest(url: String, headers: Map<String, String>, origin: String): String =
+        SameOriginMediaRequests.add(url, headers, origin)
+
+    fun setQueueNavigation(previous: (() -> Unit)?, next: (() -> Unit)?) {
+        val changed = (previousQueueAction == null) != (previous == null) || (nextQueueAction == null) != (next == null)
+        previousQueueAction = previous; nextQueueAction = next
+        if (changed) notifyChanged()
+    }
+    fun setOnEnded(listener: (() -> Unit)?) { endedAction = listener }
+    fun clearQueueNavigation() {
+        val changed = previousQueueAction != null || nextQueueAction != null
+        previousQueueAction = null; nextQueueAction = null; endedAction = null
+        if (changed) notifyChanged()
+    }
+    fun previousQueueItem() { previousQueueAction?.invoke() }
+    fun nextQueueItem() { nextQueueAction?.invoke() }
+
+    fun setPlaybackSpeed(speed: Float) {
+        require(speed.isFinite() && speed in .5f..2f) { "Choose a playback speed between 0.5× and 2×." }
+        player?.setPlaybackSpeed(speed)
+        notifyChanged()
+    }
+    fun setSleepTimer(minutes: Int?) {
+        if (player == null) return
+        sleepTimer.setMinutes(minutes); notifyChanged()
+    }
+    fun setCaptionAppearance(value: CaptionAppearance) {
+        val app = application ?: return
+        PlaybackPreferences(app).captionAppearance = value
+        (player as? LibVlcPlayer)?.setCaptionAppearance(value)
+        targetView?.get()?.let(::applyCaptionAppearance)
+        notifyChanged()
+    }
+    internal fun setSubtitleDelayMillis(value: Long): Boolean =
+        ((player as? LibVlcPlayer)?.setSubtitleDelayMillis(value) ?: false).also { if (it) notifyChanged() }
+    internal fun chapters(): List<PlaybackChapter> = (player as? LibVlcPlayer)?.chapters() ?: emptyList()
+    internal fun selectChapter(index: Int): Boolean =
+        ((player as? LibVlcPlayer)?.selectChapter(index) ?: false).also { if (it) notifyChanged() }
+
+    private fun applyCaptionAppearance(view: PlayerView) {
+        val value = captionAppearance
+        view.subtitleView?.apply {
+            setStyle(CaptionStyleCompat(value.color.argb, value.background.opacity shl 24,
+                Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, Typeface.DEFAULT))
+            setFractionalTextSize(value.size.fraction)
+            setBottomPaddingFraction(value.position.padding)
+            setApplyEmbeddedFontSizes(false)
+        }
+    }
+
     /** Returns false for an invalid link without disturbing an existing session. */
     internal fun start(context: Context, intent: Intent, saved: Bundle? = null): Boolean {
         initialize(context)
         startFailure = null
-        val address = intent.getStringExtra("url").orEmpty()
-        val uri = try { Uri.parse(address) } catch (_: RuntimeException) { null }
-        if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) return false
-        val requestToken = intent.getStringExtra("playback_request")?.takeIf(String::isNotBlank)
-        val request = requestToken?.let(ProtectedPlaybackRequests::take)
-        if ((requestToken != null && (request == null || request.url != address)) ||
-            (saved?.getBoolean("protectedPlayback", false) == true && request == null)) {
+        val mediaToken = intent.getStringExtra("media_request")?.takeIf(String::isNotBlank)
+        val mediaRequest = mediaToken?.let(SameOriginMediaRequests::take)
+        if (mediaToken != null && mediaRequest == null) {
+            startFailure = "Reopen this video from its service to refresh the playback request."
+            return false
+        }
+        if (mediaRequest == null && intent.getStringExtra("playback_request").isNullOrBlank() &&
+            (saved?.getBoolean("protectedPlayback", false) == true || intent.getBooleanExtra("protected_source", false))) {
             startFailure = "Reopen this protected source from the library to refresh its credentials."
             return false
         }
+        val address = mediaRequest?.url ?: intent.getStringExtra("url").orEmpty()
+        val uri = try { Uri.parse(address) } catch (_: RuntimeException) { null }
+        val valid = uri != null && when (uri.scheme) {
+            "https" -> !uri.host.isNullOrBlank() && uri.userInfo == null
+            "http" -> mediaRequest != null && !uri.host.isNullOrBlank() && uri.userInfo == null
+            "content" -> !uri.authority.isNullOrBlank() && uri.userInfo == null
+            "file" -> uri.authority.isNullOrBlank() && uri.path?.let { path ->
+                File(path).let { it.isAbsolute && it.isFile && it.canRead() && it.extension.lowercase() in
+                    setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "wmv", "ts", "m2ts", "mpg", "mpeg", "flv", "ogv") }
+            } == true
+            else -> false
+        }
+        if (!valid) return false
+        val requestToken = intent.getStringExtra("playback_request")?.takeIf(String::isNotBlank)
+        val request = requestToken?.let(ProtectedPlaybackRequests::take)
+        if ((requestToken != null && (request == null || request.url != address)) ||
+            ((saved?.getBoolean("protectedPlayback", false) == true || intent.getBooleanExtra("protected_source", false)) &&
+                request == null && mediaRequest == null)) {
+            startFailure = "Reopen this protected source from the library to refresh its credentials."
+            return false
+        }
+        val previousTarget = targetView?.get()
         stopInternal(notify = false)
         videoSurfaceLossCount = 0; videoSurfaceRebindCount = 0; videoTargetSwitchCount = 0
         sourceUrl = address
         sourceHeaders = request?.headers ?: emptyMap()
+        sourceRequest = mediaRequest
+        sourceRequestToken = mediaToken
         sourceKey = intent.getStringExtra("key").orEmpty()
         title = intent.getStringExtra("title").orEmpty()
         identity = try { intent.getStringExtra("identity")?.let { PlaybackIdentity.fromJson(JSONObject(it)) } } catch (_: Exception) { null }
@@ -239,14 +347,15 @@ object InAppPlaybackSession {
         error = null
         lastSyncAction = ""
         lastSyncAt = 0L
+        endNotified = false
         val preferences = PlaybackPreferences(context)
         engine = saved?.getString("engine")?.let { value -> PlaybackEngine.entries.firstOrNull { it.name == value } }
             ?: preferences.selectedEngine
-        val route = PlaybackEngineRouting.choose(engine, address, sourceHeaders.isNotEmpty())
+        val route = PlaybackEngineRouting.choose(engine, address, sourceHeaders.isNotEmpty() || sourceRequest != null)
         engine = route.engine
         engineNotice = route.notice
         val exo: Player = try {
-            if (engine == PlaybackEngine.VLC) LibVlcPlayer(NativeVlcDriver(application!!), preferences.subtitleLanguage)
+            if (engine == PlaybackEngine.VLC) LibVlcPlayer(NativeVlcDriver(application!!, preferences.captionAppearance), preferences.subtitleLanguage)
             else createMedia3Player()
         } catch (_: LinkageError) {
             startFailure = "The embedded VLC engine is unavailable on this device. Choose Media3 in Settings."
@@ -262,6 +371,7 @@ object InAppPlaybackSession {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         mediaSession = MediaSession.Builder(application!!, exo).setSessionActivity(openApp).build()
         configureSessionListener(exo)
+        try {
         exo.setMediaItem(MediaItem.Builder().setUri(address)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build(), position)
         val initialTracks = parameters ?: exo.trackSelectionParameters.buildUpon()
@@ -269,7 +379,18 @@ object InAppPlaybackSession {
             .setSelectUndeterminedTextLanguage(false).build()
         exo.trackSelectionParameters = if (exo is ExoPlayer) Media3DecoderPolicy.trackParameters(initialTracks) else initialTracks
         exo.prepare()
-        exo.playWhenReady = shouldPlay
+        exo.playWhenReady = shouldPlay && !appInBackground
+        if (appInBackground) resumeAfterBackground = shouldPlay
+        saved?.getFloat("playback_speed", 1f)?.takeIf { it.isFinite() && it in .5f..2f }?.let(exo::setPlaybackSpeed)
+        saved?.takeIf { it.containsKey("sleep_deadline") }?.getLong("sleep_deadline")?.let(sleepTimer::restore)
+        sleepTimer.expireIfDue()
+        saved?.getLong("subtitle_delay", 0L)?.let { (exo as? LibVlcPlayer)?.setSubtitleDelayMillis(it) }
+        } catch (_: Exception) {
+            stopInternal(notify = false)
+            startFailure = "This video could not be opened. Reopen it from your library or choose another source."
+            return false
+        }
+        previousTarget?.takeIf { it.isAttachedToWindow }?.let(::attachPlayerView)
         restartCheckpoint()
         notifyChanged()
         return true
@@ -307,7 +428,11 @@ object InAppPlaybackSession {
         renderers.setMediaCodecSelector(Media3DecoderPolicy.selector())
         if (Media3DecoderPolicy.affected()) renderers.setEnableDecoderFallback(true)
         val builder = ExoPlayer.Builder(application!!, renderers)
-        if (sourceHeaders.isNotEmpty()) {
+        if (sourceRequest != null) {
+            val request = sourceRequest!!
+            builder.setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(application!!,
+                DataSource.Factory { SameOriginMediaDataSource(request) })))
+        } else if (sourceHeaders.isNotEmpty()) {
             val headers = sourceHeaders.toMap()
             builder.setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(application!!,
                 DataSource.Factory { ProtectedHttpDataSource(headers) })))
@@ -325,6 +450,9 @@ object InAppPlaybackSession {
                 notifyChanged()
             }
             override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) {
+                if (isCurrent(exo)) notifyChanged()
+            }
+            override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
                 if (isCurrent(exo)) notifyChanged()
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -362,7 +490,17 @@ object InAppPlaybackSession {
                     volumeBoost.resetGain()
                     targetView?.get()?.keepScreenOn = false
                     handler.removeCallbacks(checkpoint)
+                    sleepTimer.clear()
+                    if (!endNotified) {
+                        endNotified = true
+                        val callback = endedAction
+                        handler.post {
+                            if (isCurrent(exo) && exo.playbackState == Player.STATE_ENDED && endedAction === callback)
+                                callback?.invoke()
+                        }
+                    }
                 }
+                else if (state == Player.STATE_READY) endNotified = false
                 notifyChanged()
             }
             override fun onPlayerError(failure: PlaybackException) {
@@ -377,10 +515,12 @@ object InAppPlaybackSession {
         })
     }
 
-    internal fun matches(intent: Intent): Boolean = player != null &&
-        sourceUrl == intent.getStringExtra("url").orEmpty() && sourceKey == intent.getStringExtra("key").orEmpty()
+    internal fun matches(intent: Intent): Boolean = player != null && sourceKey == intent.getStringExtra("key").orEmpty() &&
+        ((sourceRequest != null && (intent.getBooleanExtra("reuse_session", false) || intent.getStringExtra("media_request") == sourceRequestToken)) ||
+            sourceUrl == intent.getStringExtra("url").orEmpty())
 
     fun attachPlayerView(view: PlayerView) {
+        applyCaptionAppearance(view)
         val exo = player ?: run { view.player = null; return }
         if (targetView?.get() === view && view.player === exo) {
             view.keepScreenOn = exo.isPlaying
@@ -422,6 +562,7 @@ object InAppPlaybackSession {
         releasing = true
         surfaceAttachment.cancelAll()
         handler.removeCallbacks(checkpoint)
+        sleepTimer.clear()
         resumeAfterBackground = false
         volumeBoost.close()
         targetView?.get()?.let { it.player = null; it.keepScreenOn = false }
@@ -429,9 +570,9 @@ object InAppPlaybackSession {
         videoBindingGeometry.clear()
         mediaSession?.release(); mediaSession = null
         exo?.release(); player = null
-        sourceUrl = ""; sourceHeaders = emptyMap(); sourceKey = ""; title = ""; identity = null
+        sourceUrl = ""; sourceHeaders = emptyMap(); sourceRequest = null; sourceRequestToken = null; sourceKey = ""; title = ""; identity = null
         remotePercent = 0.0; error = null; engineNotice = null
-        if (notify) notifyChanged()
+        if (notify) { previousQueueAction = null; nextQueueAction = null; endedAction = null; notifyChanged() }
     }
 
     internal fun saveState(out: Bundle) {
@@ -440,14 +581,18 @@ object InAppPlaybackSession {
         out.putBoolean("playWhenReady", exo.playWhenReady && exo.playbackState != Player.STATE_ENDED)
         out.putDouble("remotePercent", remotePercent)
         out.putString("engine", engine.name)
-        out.putBoolean("protectedPlayback", sourceHeaders.isNotEmpty())
+        out.putBoolean("protectedPlayback", sourceHeaders.isNotEmpty() || sourceRequest != null)
+        out.putFloat("playback_speed", exo.playbackParameters.speed)
+        sleepTimer.deadline?.let { out.putLong("sleep_deadline", it) }
+        out.putLong("subtitle_delay", subtitleDelayMillis)
         out.putBundle("tracks", exo.trackSelectionParameters.toBundle())
     }
 
     internal fun currentIntent(context: Context): Intent? {
         val exo = player ?: return null
         return Intent(context, PlayerActivity::class.java).putExtra("reuse_session", true)
-            .putExtra("url", sourceUrl).putExtra("title", title).putExtra("key", sourceKey)
+            .putExtra("url", if (sourceRequest == null) sourceUrl else "").putExtra("title", title).putExtra("key", sourceKey)
+            .putExtra("protected_source", sourceRequest != null || sourceHeaders.isNotEmpty())
             .putExtra("resume", exo.currentPosition).putExtra("resume_percent", remotePercent)
             .putExtra("playWhenReady", exo.playWhenReady)
             .also { value -> identity?.let { value.putExtra("identity", it.toJson().toString()) } }

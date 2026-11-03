@@ -3,6 +3,7 @@ package dev.pov.tv
 import android.app.Dialog
 import android.app.Activity
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -22,15 +23,20 @@ internal data class PlayerSheetChoice(
     val action: () -> Unit,
 )
 
-/** A single TV-focusable bottom sheet style for audio, subtitles, boost, and player messages. */
+/** Touch-friendly choices with the same sequential remote focus on TV. */
 internal object PlayerOptionSheet {
     fun create(context: Context, title: String, detail: String, choices: List<PlayerSheetChoice>, accent: Int): Dialog {
         val dialog = Dialog(context)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
+        val ownerView = (context as? Activity)?.window?.decorView
+        val availableWidth = ownerView?.width?.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
+        val availableHeight = ownerView?.height?.takeIf { it > 0 } ?: context.resources.displayMetrics.heightPixels
+        val narrow = availableWidth < dp(600)
+        val television = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
         val content = LinearLayout(context).apply {
             tag = "pov_player_sheet"; orientation = LinearLayout.VERTICAL
-            setPadding(dp(32), dp(22), dp(32), dp(24))
+            setPadding(dp(if (narrow) 18 else 32), dp(18), dp(if (narrow) 18 else 32), dp(20))
             background = GradientDrawable().apply {
                 setColor(0xFF0C1724.toInt())
                 cornerRadii = floatArrayOf(dp(20).toFloat(), dp(20).toFloat(), dp(20).toFloat(), dp(20).toFloat(), 0f, 0f, 0f, 0f)
@@ -39,7 +45,8 @@ internal object PlayerOptionSheet {
         }
         val heading = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         heading.addView(TextView(context).apply {
-            text = title; textSize = 23f; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            text = title; textSize = if (narrow) 20f else 23f; maxLines = 2
+            setTextColor(Color.WHITE); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         val close = Button(context).apply {
             text = "Done"; textSize = 13f; isAllCaps = false; minWidth = dp(90)
@@ -79,7 +86,7 @@ internal object PlayerOptionSheet {
             }.also { rows.addView(it, LinearLayout.LayoutParams(-1, dp(49)).apply { bottomMargin = dp(6) }) }
         }
         val scroll = ScrollView(context).apply { isFillViewport = false; addView(rows) }
-        val maxHeight = (context.resources.displayMetrics.heightPixels * 0.44).toInt()
+        val maxHeight = (availableHeight * if (narrow) .5 else .44).toInt()
         content.addView(scroll, LinearLayout.LayoutParams(-1, minOf(dp(55) * choices.size, maxHeight).coerceAtLeast(dp(50))))
         dialog.setContentView(content)
         dialog.window?.apply {
@@ -91,7 +98,8 @@ internal object PlayerOptionSheet {
             (context as? Activity)?.window?.decorView?.systemUiVisibility?.let { flags ->
                 dialog.window?.decorView?.systemUiVisibility = flags
             }
-            dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            dialog.window?.setLayout(if (television) WindowManager.LayoutParams.MATCH_PARENT else minOf(availableWidth, dp(760)),
+                WindowManager.LayoutParams.WRAP_CONTENT)
             dialog.window?.setGravity(Gravity.BOTTOM)
             val selected = choices.indexOfFirst { it.checked }.takeIf { it >= 0 } ?: 0
             buttons.getOrNull(selected)?.post { buttons[selected].requestFocus() }

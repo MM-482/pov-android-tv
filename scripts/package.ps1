@@ -12,10 +12,10 @@ $metadata = Get-Content -LiteralPath (Join-Path $buildOutput 'outputs\apk\debug\
 $versionName = $metadata.elements[0].versionName
 if ($versionName -notmatch '^\d+\.\d+\.\d+-preview$') { throw 'Unexpected preview version.' }
 $sourceVersion = $versionName.Replace('-preview', '')
-$apkOutput = Join-Path $outputRoot "POV-Android-TV-$versionName.apk"
+$apkOutput = Join-Path $outputRoot "Cameo-Android-$versionName.apk"
 Copy-Item -LiteralPath $apkSource -Destination $apkOutput -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$sourceOutput = Join-Path $outputRoot "POV-Android-TV-$sourceVersion-source.zip"
+$sourceOutput = Join-Path $outputRoot "Cameo-Android-$sourceVersion-source.zip"
 $fileStream = [System.IO.File]::Open($sourceOutput, [System.IO.FileMode]::Create)
 $archive = [System.IO.Compression.ZipArchive]::new($fileStream, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
