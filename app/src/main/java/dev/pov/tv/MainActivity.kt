@@ -814,7 +814,7 @@ class MainActivity : Activity() {
             frame.setOnClickListener { returnToVideo() }
             frame.setOnLongClickListener { playbackOptions(); true }
             shellRoot.addView(frame, FrameLayout.LayoutParams(dp(if (mobile) minOf(247, AdaptiveLayout.snapshot(this).contentWidthDp) else 247), dp(145), Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(20); bottomMargin = dp(if (mobile && !AdaptiveLayout.snapshot(this@MainActivity).useNavigationRail) 91 else 15)
+                rightMargin = dp(20); bottomMargin = dp(if (mobile) 91 else 15)
             })
             miniFrame = frame; miniPlayer = video; miniLabel = label
             miniFocus = MiniPlayerFocusRouter(body, frame)

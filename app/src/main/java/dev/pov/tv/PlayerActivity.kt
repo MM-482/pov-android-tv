@@ -14,6 +14,7 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
@@ -91,6 +92,8 @@ class PlayerActivity : Activity() {
     }
 
     private fun configureButtons() {
+        val focusInTouchMode = AdaptiveLayout.isTelevision(this)
+        view.isFocusableInTouchMode = focusInTouchMode
         val actions = view.findViewById<LinearLayout>(R.id.pov_player_actions)
         actions.addView(Button(this).apply {
             id = optionsId; tag = "cameo_player_options"; text = "Options"; textSize = 13f; isAllCaps = false
@@ -105,7 +108,8 @@ class PlayerActivity : Activity() {
         rowIds.forEachIndexed { index, id ->
             val button = view.findViewById<View>(id)
             button.isFocusable = true
-            button.isFocusableInTouchMode = true
+            // Touch buttons should activate on the first tap instead of only taking focus.
+            button.isFocusableInTouchMode = focusInTouchMode
             button.nextFocusUpId = androidx.media3.ui.R.id.exo_progress
             button.nextFocusLeftId = rowIds[(index - 1).coerceAtLeast(0)]
             button.nextFocusRightId = rowIds[(index + 1).coerceAtMost(rowIds.lastIndex)]
@@ -468,6 +472,13 @@ class PlayerActivity : Activity() {
             }
         }
         dialog.show()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Keep both hide deadlines fresh while preserving native video taps,
+        // button clicks and timeline drags. Revealing here would toggle twice.
+        if (::controls.isInitialized) controls.touchInteraction(event)
+        return super.dispatchTouchEvent(event)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -2,10 +2,14 @@ package dev.pov.tv
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Insets
 import android.graphics.Rect
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
 import android.widget.TextView
 import dev.pov.tv.data.MediaItemData
 import dev.pov.tv.data.PlaybackIdentity
@@ -16,6 +20,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28, 35], qualifiers = "w360dp-h800dp-port-mdpi")
@@ -51,6 +56,63 @@ class MobileLayoutTest {
         }
         assertEquals(listOf("series", "home", "movie", "anime", "library", "search"), clicked)
         activity.finish()
+    }
+
+    @Test fun `five bottom controls stay anchored across touch widths themes insets and scrolling`() {
+        val expectedKeys = listOf("home", "movie", "anime", "library", "search")
+        val expectedLabels = listOf("Home", "Browse", "Anime", "Library", "Search")
+        val safe = Rect(6, 24, 10, 28)
+        try {
+            for (width in listOf(360, 600, 720, 840, 1024)) {
+                RuntimeEnvironment.setQualifiers("w${width}dp-h800dp-${if (width < 800) "port" else "land"}-mdpi")
+                val context: Context = RuntimeEnvironment.getApplication()
+                for (theme in ThemeSpec.selectableThemes) {
+                    val case = "${theme.displayName} ${width}dp"
+                    val clicked = mutableListOf<String>()
+                    val destinations = linkedMapOf("home" to "Home", "movie" to "Movies", "series" to "Shows", "anime" to "Anime",
+                        "library" to "Library", "search" to "Search", "settings" to "Settings", "trakt" to "Trakt")
+                        .map { (key, label) -> ConceptDestination(key, label) { clicked += key } }
+                    val shell = MobileShellRenderer(context, theme).render(destinations) { "home" }
+                    shell.body.addView(View(context), LinearLayout.LayoutParams(-1, 1800))
+                    shell.root.dispatchApplyWindowInsets(systemInsets(safe))
+                    assertEquals("$case safe left inset", safe.left, shell.root.paddingLeft)
+                    assertEquals("$case safe top inset", safe.top, shell.root.paddingTop)
+                    assertEquals("$case safe right inset", safe.right, shell.root.paddingRight)
+                    assertEquals("$case safe bottom inset", safe.bottom, shell.root.paddingBottom)
+                    measureShell(shell.root, width, 800)
+                    assertEquals("$case uses the same touch shell", "mobile-shell:bottom", shell.root.tag)
+                    val nav = shell.root.findViewWithTag<LinearLayout>("mobile:navigation")
+                    assertEquals("$case has one horizontal row", LinearLayout.HORIZONTAL, nav.orientation)
+                    assertEquals("$case retains exactly five primary destinations", 5, nav.childCount)
+                    assertEquals("$case destination order", expectedKeys.map { "nav:$it" }, (0 until nav.childCount).map { nav.getChildAt(it).tag })
+                    assertEquals("$case labels remain unchanged", expectedLabels, (0 until nav.childCount).flatMap { labels(nav.getChildAt(it)) })
+                    assertSame("$case Shows keeps the Browse destination", shell.navigationViews["movie"], shell.navigationViews["series"])
+                    val navBounds = bounds(shell.root, nav)
+                    assertTrue("$case bottom bar is below the content", navBounds.top >= 800 - safe.bottom - 90)
+                    assertTrue("$case bar stays above the system navigation area", navBounds.bottom <= 800 - safe.bottom)
+                    assertTrue("$case bar is anchored to the safe bottom", navBounds.bottom >= 800 - safe.bottom - 8)
+                    assertTrue("$case bar clears side insets", navBounds.left >= safe.left && navBounds.right <= width - safe.right)
+                    assertTrue("$case scrolling content clears the bar", bounds(shell.root, shell.scroller).bottom <= navBounds.top)
+                    expectedKeys.forEach { key ->
+                        val button = requireNotNull(shell.navigationViews[key])
+                        assertTrue("$case $key has a 48dp touch width", button.width >= 48)
+                        assertTrue("$case $key has a 48dp touch height", button.height >= 48)
+                        assertTrue("$case $key stays inside the bottom bar", navBounds.contains(bounds(shell.root, button)))
+                        assertTrue("$case $key activates", button.performClick())
+                    }
+                    assertEquals("$case callbacks retain their destinations", expectedKeys, clicked)
+                    shell.scroller.scrollTo(0, 420)
+                    assertTrue("$case content can scroll", shell.scroller.scrollY > 0)
+                    assertEquals("$case scrolling keeps the menu fixed", navBounds, bounds(shell.root, nav))
+                    MobileShellRenderer.applyContentInsets(shell.scroller, theme, true)
+                    measureShell(shell.root, width, 800)
+                    assertEquals("$case Home keeps the menu fixed", navBounds, bounds(shell.root, nav))
+                    assertTrue("$case Home content clears the bar", bounds(shell.root, shell.scroller).bottom <= navBounds.top)
+                }
+            }
+        } finally {
+            RuntimeEnvironment.setQualifiers("w360dp-h800dp-port-mdpi")
+        }
     }
 
     @Test fun `all five themes explore the catalog feature and retain exact resume and hold identities`() {
@@ -132,15 +194,15 @@ class MobileLayoutTest {
     }
 
     @Test @Config(qualifiers = "w720dp-h690dp-land-mdpi")
-    fun `unfolded-sized window uses rail without expanding content to a TV canvas`() {
+    fun `unfolded-sized window keeps bottom navigation and a wider feature composition`() {
         val context: Context = RuntimeEnvironment.getApplication()
         val destinations = listOf(ConceptDestination("home", "Home") {})
         val shell = MobileShellRenderer(context, ThemeSpec.ATELIER).render(destinations) { "home" }
-        assertEquals("mobile-shell:rail", shell.root.tag)
+        assertEquals("mobile-shell:bottom", shell.root.tag)
         val margins = shell.scroller.layoutParams as ViewGroup.MarginLayoutParams
-        assertEquals(104, margins.leftMargin)
+        assertEquals(16, margins.leftMargin)
         assertEquals(16, margins.rightMargin)
-        assertEquals(0, margins.bottomMargin)
+        assertEquals(72, margins.bottomMargin)
         val item = MediaItemData("tt100001", "movie", "A feature for a wider window")
         MobileHomeRenderer(context, ThemeSpec.ATELIER).render(shell.body, shell.heroBackdrop, shell.backdropArt,
             ConceptHomeData(listOf(item), emptyList(), emptyList()), ConceptHomeCallbacks(
@@ -173,4 +235,21 @@ class MobileLayoutTest {
         row.performClick()
         assertTrue(chosen)
     }
+
+    private fun labels(view: View): List<String> = when (view) {
+        is TextView -> listOf(view.text.toString())
+        is ViewGroup -> (0 until view.childCount).flatMap { labels(view.getChildAt(it)) }
+        else -> emptyList()
+    }
+    private fun bounds(root: ViewGroup, view: View) = Rect(0, 0, view.width, view.height).also { root.offsetDescendantRectToMyCoords(view, it) }
+    private fun measureShell(root: View, width: Int, height: Int) {
+        root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+        root.layout(0, 0, width, height)
+    }
+    @Suppress("DEPRECATION")
+    private fun systemInsets(safe: Rect): WindowInsets = if (Build.VERSION.SDK_INT >= 30) {
+        WindowInsets.Builder().setInsets(WindowInsets.Type.systemBars(), Insets.of(safe.left, safe.top, safe.right, safe.bottom))
+            .setVisible(WindowInsets.Type.systemBars(), true).build()
+    } else ReflectionHelpers.callConstructor(WindowInsets::class.java,
+        ReflectionHelpers.ClassParameter.from(Rect::class.java, safe))
 }

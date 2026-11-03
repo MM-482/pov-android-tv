@@ -24,8 +24,8 @@ class MobileHomeRenderer(private val context: Context, private val theme: ThemeS
     private val profile = ui.profile
     private val window = AdaptiveLayout.snapshot(context)
     private val content = MobileContentRenderer(context, theme)
-    private val shelfWidth = (window.widthDp - window.railWidthDp - profile.insetDp * 2).coerceAtLeast(1)
-    private val shelfColumns = if (window.useNavigationRail) 3 else 2
+    private val shelfWidth = (window.widthDp - profile.insetDp * 2).coerceAtLeast(1)
+    private val shelfColumns = if (window.widthClass == WindowWidthClass.COMPACT) 2 else 3
     private val tileWidth = (shelfWidth - 10 * (shelfColumns - 1)) / shelfColumns
 
     fun render(body: LinearLayout, heroBackdrop: FrameLayout, backdropArt: ImageView,
@@ -142,7 +142,7 @@ class MobileContentRenderer(private val context: Context, private val theme: The
     private val ui = MobileUi(context, theme)
     private val profile = ui.profile
     private val window = AdaptiveLayout.snapshot(context)
-    private val homeWidth = window.widthDp - window.railWidthDp - if (profile.fullBleedHero) 0 else profile.insetDp * 2
+    private val homeWidth = window.widthDp - if (profile.fullBleedHero) 0 else profile.insetDp * 2
 
     fun cardWidthDp(poster: Boolean = false): Int =
         if (poster) ((window.contentWidthDp - 10) / 2).coerceIn(132, 200)
@@ -159,10 +159,12 @@ class MobileContentRenderer(private val context: Context, private val theme: The
         val copy = homeCopy(item, callbacks)
         if (window.splitFeature && !profile.fullBleedHero) {
             val layout = LinearLayout(context).apply { tag = composition; orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            copy.minimumHeight = ui.dp(240)
+            // Leave room for both shelves above the persistent bottom menu on an unfolded phone.
+            val featureHeight = if (theme == ThemeSpec.ESSENTIAL || theme == ThemeSpec.ATELIER) 228 else 240
+            copy.minimumHeight = ui.dp(featureHeight)
             layout.addView(copy, LinearLayout.LayoutParams(0, -2, .48f))
             val artwork = artwork(item, callbacks.loadImage, rounded = true)
-            artwork.minimumHeight = ui.dp(240)
+            artwork.minimumHeight = ui.dp(featureHeight)
             layout.addView(artwork, LinearLayout.LayoutParams(0, -1, .52f))
             frame.addView(layout, FrameLayout.LayoutParams(-1, -2))
         } else if (profile.fullBleedHero) {
@@ -175,7 +177,11 @@ class MobileContentRenderer(private val context: Context, private val theme: The
             }, FrameLayout.LayoutParams(-1, -1))
             val layout = LinearLayout(context).apply { tag = composition; orientation = LinearLayout.VERTICAL }
             if (window.splitFeature) {
-                copy.minimumHeight = ui.dp(if (profile.headerOverArtwork) 340 else 245)
+                copy.minimumHeight = ui.dp(when {
+                    profile.headerOverArtwork -> 340
+                    profile.hero == MobileHeroComposition.CINEMA -> 233
+                    else -> 245
+                })
                 copy.gravity = Gravity.CENTER_VERTICAL
                 if (profile.headerOverArtwork) copy.setPadding(copy.paddingLeft, ui.dp(110), copy.paddingRight, ui.dp(20))
                 layout.addView(copy, LinearLayout.LayoutParams(ui.dp((homeWidth * .58f).roundToInt()), -2))

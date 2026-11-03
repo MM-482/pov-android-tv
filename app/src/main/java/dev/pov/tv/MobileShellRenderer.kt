@@ -23,7 +23,7 @@ import android.widget.TextView
 import java.util.Locale
 import kotlin.math.ceil
 
-/** Native touch shell. Home categories and navigation retain their own selection and actions. */
+/** Native touch shell with the same bottom destinations on phone, Fold, and tablet windows. */
 class MobileShellRenderer(private val context: Context, private val theme: ThemeSpec) {
     private val ui = MobileUi(context, theme)
     private val profile = ui.profile
@@ -41,7 +41,7 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
             activityWindow.navigationBarColor = ui.palette.background
         }
         val root = FrameLayout(context).apply {
-            tag = "mobile-shell:${if (window.useNavigationRail) "rail" else "bottom"}"
+            tag = "mobile-shell:bottom"
             background = if (theme == ThemeSpec.HORIZON) ui.auroraCanvas() else ui.rounded(ui.palette.background, 0)
             setOnApplyWindowInsetsListener { view, insets ->
                 if (Build.VERSION.SDK_INT >= 30) {
@@ -103,7 +103,7 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
         }
         val standard = setOf("home", "movie", "series", "anime", "library", "search", "settings")
         val extras = destinations.filter { it.key !in standard }
-        if (extras.isNotEmpty() && !window.useNavigationRail) {
+        if (extras.isNotEmpty()) {
             // The brand remains an accessible menu anchor for account/player destinations.
             header.isClickable = true
             header.setOnClickListener { anchor ->
@@ -114,13 +114,13 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
             }
             header.contentDescription = "Cameo ${theme.displayName}. More destinations."
         }
-        root.addView(header, FrameLayout.LayoutParams(-1, ui.dp(headerHeight), Gravity.TOP).apply { leftMargin = ui.dp(window.railWidthDp) })
+        root.addView(header, FrameLayout.LayoutParams(-1, ui.dp(headerHeight), Gravity.TOP))
         val categories = LinearLayout(context).apply {
             tag = "mobile:categories"; gravity = Gravity.CENTER_VERTICAL; orientation = LinearLayout.HORIZONTAL
             if (profile.tabs == MobileTabStyle.CAPSULE) background = ui.rounded(ui.alpha(ui.palette.background, 145), 26, ui.palette.border)
         }
         root.addView(categories, FrameLayout.LayoutParams(-1, ui.dp(categoriesHeight), Gravity.TOP).apply {
-            leftMargin = ui.dp(window.railWidthDp + profile.insetDp); rightMargin = ui.dp(profile.insetDp); topMargin = ui.dp(headerHeight)
+            leftMargin = ui.dp(profile.insetDp); rightMargin = ui.dp(profile.insetDp); topMargin = ui.dp(headerHeight)
         })
         var homePage = false
         var glassScrimRaised = false
@@ -140,13 +140,13 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
             paintPinnedChrome()
             val lp = scroller.layoutParams as FrameLayout.LayoutParams
             val inset = if (homePage) { if (profile.fullBleedHero) 0 else profile.insetDp } else window.horizontalInsetDp
-            lp.leftMargin = ui.dp(window.railWidthDp + inset); lp.rightMargin = ui.dp(inset)
+            lp.leftMargin = ui.dp(inset); lp.rightMargin = ui.dp(inset)
             lp.topMargin = when {
                 homePage && profile.headerOverArtwork -> 0
                 categoriesVisible -> ui.dp(headerHeight + categoriesHeight + if (theme == ThemeSpec.ESSENTIAL) 14 else if (profile.fullBleedHero) 0 else 4)
                 else -> ui.dp(headerHeight + 12)
             }
-            lp.bottomMargin = if (window.useNavigationRail) 0 else ui.dp(navigationHeight + if (profile.floatingNavigation) 8 else 4)
+            lp.bottomMargin = ui.dp(navigationHeight + if (profile.floatingNavigation) 8 else 4)
             scroller.layoutParams = lp
         }
         scroller.tag = MobileShellState { home -> homePage = home; refreshLayout() }
@@ -159,13 +159,12 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
                 navigation["category:$key"] = tab
             }
         }
-        val primary = if (window.useNavigationRail) destinations.filter { it.key != "settings" }
-            else listOf("home", "movie", "anime", "library", "search").mapNotNull { key -> destinations.firstOrNull { it.key == key } }
+        val primary = listOf("home", "movie", "anime", "library", "search")
+            .mapNotNull { key -> destinations.firstOrNull { it.key == key } }
         val nav = LinearLayout(context).apply {
-            tag = "mobile:navigation"; orientation = if (window.useNavigationRail) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            tag = "mobile:navigation"; orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER; setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4))
             background = when {
-                window.useNavigationRail -> ui.rounded(ui.palette.panel, 0)
                 theme == ThemeSpec.GLASS -> ui.glassSurface(24)
                 theme == ThemeSpec.HORIZON -> ui.rounded(ui.alpha(ui.palette.background, 225), 34, ui.palette.border)
                 theme == ThemeSpec.ESSENTIAL -> ui.rounded(ui.palette.panel, 0)
@@ -173,29 +172,22 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
             }
         }
         primary.forEach { target ->
-            val browse = !window.useNavigationRail && target.key == "movie"
+            val browse = target.key == "movie"
             val cell = navigation(target, selectedDestination, if (browse) "Browse" else target.label, if (browse) "browse" else target.key) { refreshLayout() }
             navigation[target.key] = cell
             if (browse) navigation["series"] = cell
-            nav.addView(cell, if (window.useNavigationRail) LinearLayout.LayoutParams(-1, ui.dp(76)) else LinearLayout.LayoutParams(0, -1, 1f))
+            nav.addView(cell, LinearLayout.LayoutParams(0, -1, 1f))
         }
-        if (window.useNavigationRail) {
-            val rail = ScrollView(context).apply {
-                isVerticalScrollBarEnabled = false
-                addView(nav, FrameLayout.LayoutParams(-1, -2))
-            }
-            root.addView(rail, FrameLayout.LayoutParams(ui.dp(88), -1, Gravity.START))
-        } else {
-            val navigationFrame = FrameLayout(context).apply {
-                addView(nav, FrameLayout.LayoutParams(-1, -1))
-                if (!profile.floatingNavigation && theme != ThemeSpec.ESSENTIAL) addView(View(context).apply { setBackgroundColor(ui.palette.border) },
-                    FrameLayout.LayoutParams(-1, ui.dp(1), Gravity.TOP))
-            }
-            root.addView(navigationFrame, FrameLayout.LayoutParams(-1, ui.dp(navigationHeight), Gravity.BOTTOM).apply {
-                leftMargin = if (theme == ThemeSpec.HORIZON) ui.dp(8) else 0; rightMargin = leftMargin
-                bottomMargin = if (profile.floatingNavigation) ui.dp(4) else 0
-            })
+        val navigationFrame = FrameLayout(context).apply {
+            tag = "mobile:navigation-frame"
+            addView(nav, FrameLayout.LayoutParams(-1, -1))
+            if (!profile.floatingNavigation && theme != ThemeSpec.ESSENTIAL) addView(View(context).apply { setBackgroundColor(ui.palette.border) },
+                FrameLayout.LayoutParams(-1, ui.dp(1), Gravity.TOP))
         }
+        root.addView(navigationFrame, FrameLayout.LayoutParams(-1, ui.dp(navigationHeight), Gravity.BOTTOM).apply {
+            leftMargin = if (theme == ThemeSpec.HORIZON) ui.dp(8) else 0; rightMargin = leftMargin
+            bottomMargin = if (profile.floatingNavigation) ui.dp(4) else 0
+        })
         val badge = ui.text("", 11, ui.palette.muted).apply { visibility = View.GONE }
         if (profile.headerOverArtwork) scroller.viewTreeObserver.addOnScrollChangedListener {
             val raised = homePage && scroller.scrollY > ui.dp(32)
@@ -267,7 +259,7 @@ class MobileShellRenderer(private val context: Context, private val theme: Theme
             cell.isSelected = selected
             val color = if (selected || focused) ui.palette.accent else ui.palette.text
             icon.tint = color; label.setTextColor(color); label.typeface = ui.font(if (selected) 650 else 450)
-            cell.background = ui.ripple(ui.rounded(if (focused || (selected && window.useNavigationRail)) ui.palette.navSelected else Color.TRANSPARENT, 18))
+            cell.background = ui.ripple(ui.rounded(if (focused) ui.palette.navSelected else Color.TRANSPARENT, 18))
             updateLayout()
         }
         cell.setOnFocusChangeListener { _, focused -> paint(focused) }

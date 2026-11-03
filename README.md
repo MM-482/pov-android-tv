@@ -2,15 +2,16 @@
 
 **Standalone app made by Mark Mateo. Based on the original POV Kodi add-on by [kodifitzwell](https://github.com/kodifitzwell/repo).**
 
-Cameo is a native Android app for browsing movies, shows, and anime, organizing your own videos and saved titles, connecting your playback services, and playing video inside the app. Kodi is not required. This source is **0.4.1-preview** (`versionCode 8`), for Android 8.0 / API 26 and later.
+Cameo is a native Android app for browsing movies, shows, and anime, organizing your own videos and saved titles, connecting your playback services, and playing video inside the app. Kodi is not required. This source is **0.4.2-preview** (`versionCode 9`), for Android 8.0 / API 26 and later.
 
 This version extends the Android TV 0.3.0 base to touch devices and foldable windows, and implements features from the supplied **Cameo Windows 0.2.4** source. The regular application's ID remains `dev.pov.tv` so an appropriately signed update can retain existing Android data. A separate **Cameo Preview** build can be installed alongside it. Published downloads and their matching source assets are listed on [GitHub releases](https://github.com/MM-482/pov-android-tv/releases).
 
-[0.4.1 design and navigation fixes](docs/RELEASE_NOTES_0.4.1.md) · [0.4.0 feature additions](docs/RELEASE_NOTES_0.4.0.md) · [Feature mapping and limits](docs/CAMEO_ANDROID_PARITY.md) · [Verified build results](docs/VALIDATION_0.4.1.md) · [LibVLC sources and licensing](docs/LIBVLC.md)
+[0.4.2 touch navigation and playback fixes](docs/RELEASE_NOTES_0.4.2.md) · [0.4.1 design corrections](docs/RELEASE_NOTES_0.4.1.md) · [0.4.0 feature additions](docs/RELEASE_NOTES_0.4.0.md) · [Feature mapping and limits](docs/CAMEO_ANDROID_PARITY.md) · [Verified build results](docs/VALIDATION_0.4.2.md) · [LibVLC sources and licensing](docs/LIBVLC.md)
 
 ## What this version adds
 
-- **Phone and foldable layouts:** native touch sizing, scrollable content, five bottom navigation destinations on narrow windows, and a navigation rail from 600dp. Resize and rotation rebuild the presentation around the current navigation state and shared playback session. TV keeps its remote-oriented layout and ordered DPAD source/file navigation.
+- **Phone and foldable layouts:** native touch sizing, scrollable content, and the same five bottom navigation destinations at every touch width, including unfolded and tablet windows. Wider content adapts independently of the menu. Resize and rotation retain navigation state and the shared playback session. TV keeps its remote-oriented layout and ordered DPAD source/file navigation.
+- **Recoverable playback controls:** tapping the video after the controls auto-hide restores a full interaction interval for Media3 and embedded VLC. Touch observation preserves native video taps, button clicks, and scrubbing; touch actions activate on the first tap.
 - **Five reference-based appearances:** Glass, Cinema, Slate, Pearl, and Aurora now follow the supplied November 2 phone and TV concepts, with distinct artwork placement, typography, cards, and navigation. Five independently selectable native launcher icons are available in Blue, Violet, Pearl, Gold, and Mint. Theme changes do not switch the app icon.
 - **Local videos, watchlist, and playlists:** import selected videos or a folder through Android's document picker; search the local library; save catalog titles, exact episodes, local videos, and service files; rename and reorder playlists; use previous/next and automatic advancement for playable entries.
 - **More saved connections:** independent saved accounts cover all 22 service types, including playback providers, media servers, anime trackers, Trakt, Simkl, MDBList, and subtitle providers. Actions on a saved tracker/subtitle account stay tied to that account; existing automatic-tracking connections remain separate.
@@ -48,12 +49,14 @@ Open **Settings → Appearance**. Glass is the fresh-install default.
 
 Existing Essential, Premiere, Atelier, and Horizon preferences retain their stored identifiers and display as Slate, Cinema, Pearl, and Aurora. Existing Studio preferences remain readable; Studio is not in the new five-theme picker. Earlier Android appearance preferences still migrate without clearing accounts or playback history.
 
-The touch layout uses the **current window size in dp**, including split-screen and fold/unfold changes, rather than a hard-coded phone model. Widths below 600dp use **Home / Browse / Anime / Library / Search** bottom navigation; wider touch windows use a rail. Content at least 560dp wide can use a split feature composition, including the tested 720dp unfolded window. Both browsing and fullscreen playback follow the device's orientation preference on mobile; TV retains landscape presentation. The new renderer has not been verified on a physical Galaxy Z Fold 8.
+The touch layout uses the **current window size in dp**, including split-screen and fold/unfold changes. **Home / Browse / Anime / Library / Search** remain at the bottom at every touch width. Content at least 560dp wide can use a split feature composition, including the tested 720dp unfolded window. The mini-player remains above the bottom menu. Both browsing and fullscreen playback follow the device's orientation preference on mobile; TV retains landscape presentation. The renderer has not been verified on a physical Galaxy Z Fold 8.
 
 ## Playback and controls
 
 | Action | Behavior |
 | --- | --- |
+| Tap the video after controls hide | Restore the controls without pausing, replacing, or restarting the playback session. |
+| Drag the timeline | Keep controls available throughout the scrub and start a fresh hide interval when the gesture finishes. |
 | Back from fullscreen | Browse with the same session in the in-app mini-player. |
 | Tap/select the mini-player | Return to fullscreen playback. |
 | Hold the mini-player, or use the TV Menu action | Open Return to video / Stop playback. |
@@ -77,7 +80,7 @@ Public catalog requests use HTTPS. User-configured media servers and add-ons may
 
 ## Building and installing an update
 
-**Use the side-by-side Cameo Preview candidate for initial testing when the original installation's signing key is unavailable.** Its application ID is `dev.pov.tv.cameopreview`, its launcher label is **Cameo Preview**, and its version is `0.4.1-preview-side-by-side`. Its first installation starts with separate, fresh app data and leaves the installed `dev.pov.tv` app and its data intact. Existing regular-app accounts, library entries, and history are not copied automatically. A Preview update signed with the retained Preview key can update the earlier Cameo Preview installation in place.
+**Use the side-by-side Cameo Preview candidate for initial testing when the original installation's signing key is unavailable.** Its application ID is `dev.pov.tv.cameopreview`, its launcher label is **Cameo Preview**, and its version is `0.4.2-preview-side-by-side`. Its first installation starts with separate, fresh app data and leaves the installed `dev.pov.tv` app and its data intact. Existing regular-app accounts, library entries, and history are not copied automatically. A Preview update signed with the retained Preview key can update the earlier Cameo Preview installation in place.
 
 The source uses Java 17, Gradle 8.14.3, compile API 36, target API 35, and minimum API 26. On Windows, run from the project directory with PowerShell 7:
 
@@ -100,7 +103,7 @@ Its APK is under `$env:POV_BUILD_OUTPUT/outputs/apk/preview/app-preview.apk`. Wi
 
 ## Verification scope
 
-The final local run passed **553 tests in 76 suites**, with no failures, errors or skipped tests. Both APK builds succeeded; Android lint reported **0 errors and 64 warnings**. All **15 native preview renders** passed their geometry checks. The [0.4.1 validation record](docs/VALIDATION_0.4.1.md) records the exact artifact identities and scope. The earlier [0.4.0 validation](docs/VALIDATION_0.4.0.md) remains a separate historical record.
+The final local run passed **570 tests in 77 suites**, with no failures, errors or skipped tests. Both APK builds succeeded; Android lint reported **0 errors and 64 warnings**. All **15 native preview renders** passed their geometry checks. The [0.4.2 validation record](docs/VALIDATION_0.4.2.md) records the exact artifact identities and scope. Earlier [0.4.1](docs/VALIDATION_0.4.1.md) and [0.4.0](docs/VALIDATION_0.4.0.md) validation records remain historical.
 
 Automated checks cover the adaptive layout, theme/icon independence, configuration-change navigation/session retention, TV navigation regressions, saved libraries/playlists, service contracts, download handling, NZB/yEnc integrity, and player options. The opt-in preview fixture renders real native controls at the original phone canvas sizes, a 720dp unfolded window, and the TV canvas. Its fictional catalog and optional artwork sampled from text-free reference regions are test fixtures only. Preview metadata identifies these as **simulated native layouts**, not physical-device screenshots.
 
@@ -114,4 +117,4 @@ Application source is provided under [GNU GPL version 3](LICENSE). Original POV 
 
 AndroidX Media3, Kotlin, OkHttp, and Okio retain their Apache License 2.0 notices; the [complete license](app/src/main/assets/Apache-2.0.txt) is included. Embedded LibVLC/native components and bundled fonts retain their upstream licenses and [source obligations](docs/LIBVLC.md). Runtime artwork and service names belong to their respective owners. The [runtime notices](app/src/main/assets/NOTICE.txt), including the Public Suffix List notice, and [font notices](app/src/main/assets/FONT_NOTICES.md) remain included.
 
-Historical [0.3.0 setup](docs/INSTALL_0.3.0.md), [change notes](docs/RELEASE_NOTES_0.3.0.md), [audit](docs/AUDIT_0.3.0.md), design galleries, and earlier release records are preserved. They describe their own versions and do not certify this 0.4.1 candidate.
+Historical [0.3.0 setup](docs/INSTALL_0.3.0.md), [change notes](docs/RELEASE_NOTES_0.3.0.md), [audit](docs/AUDIT_0.3.0.md), design galleries, and earlier release records are preserved. They describe their own versions and do not certify this 0.4.2 candidate.

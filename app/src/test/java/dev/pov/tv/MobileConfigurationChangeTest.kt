@@ -1,8 +1,11 @@
 package dev.pov.tv
 
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -33,7 +36,7 @@ import kotlin.math.roundToInt
 @LooperMode(LooperMode.Mode.PAUSED)
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class MobileConfigurationChangeTest {
-    @Test fun `fold resize preserves current route back stack selected season scroll and shared playback`() {
+    @Test fun `fold resize keeps five bottom controls and preserves route back stack scroll and shared playback`() {
         val controller = Robolectric.buildActivity(MainActivity::class.java)
         val activity = controller.get()
         activity.setTheme(R.style.AppTheme)
@@ -41,8 +44,10 @@ class MobileConfigurationChangeTest {
             mainManifestChanges().containsAll(setOf("density", "fontScale")))
         set(activity, "theme", ThemeSpec.GLASS)
         set(activity, "publicPreview", true)
+        set(activity, "playbackAuditPreview", true)
         set(activity, "playbackPreferences", PlaybackPreferences(activity))
         set(activity, "destination", "anime")
+        set(activity, "resumed", true)
         val sessionField = InAppPlaybackSession::class.java.getDeclaredField("player").apply { isAccessible = true }
         val previousPlayer = sessionField.get(InAppPlaybackSession)
         val player = RecordingPlayer()
@@ -71,10 +76,15 @@ class MobileConfigurationChangeTest {
             val savedScroll = (field(activity, "scroller") as ScrollView).scrollY
             assertTrue(savedScroll > 0)
             assertTrue(player.isPlaying)
+            assertBottomNavigationAndPlaybackClearance(activity)
 
-            listOf(Triple("w720dp-h690dp-land-mdpi", 720, 690),
+            val resizedWindows = listOf(Triple("w600dp-h800dp-port-mdpi", 600, 800),
+                Triple("w720dp-h690dp-land-mdpi", 720, 690),
                 Triple("w720dp-h690dp-land-xhdpi", 720, 690),
-                Triple("w360dp-h800dp-port-mdpi", 360, 800)).forEach { (qualifiers, width, height) ->
+                Triple("w840dp-h800dp-land-mdpi", 840, 800),
+                Triple("w1024dp-h800dp-land-mdpi", 1024, 800),
+                Triple("w360dp-h800dp-port-mdpi", 360, 800))
+            resizedWindows.forEach { (qualifiers, width, height) ->
                 RuntimeEnvironment.setQualifiers(qualifiers)
                 assertEquals(if (qualifiers.endsWith("xhdpi")) 2f else 1f, activity.resources.displayMetrics.density, .001f)
                 activity.onConfigurationChanged(Configuration(activity.resources.configuration))
@@ -93,20 +103,56 @@ class MobileConfigurationChangeTest {
                 assertEquals(0, player.stops)
                 assertEquals(0, player.releases)
                 assertEquals(0, player.pauses)
-                assertEquals(if (width >= 600) "mobile-shell:rail" else "mobile-shell:bottom", (field(activity, "shellRoot") as View).tag)
+                assertBottomNavigationAndPlaybackClearance(activity)
             }
-            assertEquals(4, detailRenders)
+            assertEquals(1 + resizedWindows.size, detailRenders)
             activity.onBackPressed()
             assertEquals(0, (field(activity, "backStack") as ArrayDeque<*>).size)
             assertSame(parentScreen, field(activity, "current"))
             assertEquals("Anime overview", ((field(activity, "body") as LinearLayout).getChildAt(0) as TextView).text.toString())
         } finally {
+            set(activity, "playbackAuditPreview", false)
+            if (field(activity, "miniFrame") != null) invoke(activity, "updateMiniPlayer")
             sessionField.set(InAppPlaybackSession, previousPlayer)
             for (name in listOf("worker", "images", "authWorker")) (field(activity, name) as ExecutorService).shutdownNow()
             player.release()
             activity.finish()
             shadowOf(Looper.getMainLooper()).idle()
         }
+    }
+
+    private fun assertBottomNavigationAndPlaybackClearance(activity: MainActivity) {
+        val root = field(activity, "shellRoot") as ViewGroup
+        val density = activity.resources.displayMetrics.density
+        val navigation = root.findViewWithTag<LinearLayout>("mobile:navigation")
+        val frame = root.findViewWithTag<FrameLayout>("mobile:navigation-frame")
+        val expectedLabels = listOf("Home", "Browse", "Anime", "Library", "Search")
+        val expectedKeys = listOf("home", "movie", "anime", "library", "search")
+        assertEquals("mobile-shell:bottom", root.tag)
+        assertEquals(LinearLayout.HORIZONTAL, navigation.orientation)
+        assertEquals(5, navigation.childCount)
+        @Suppress("UNCHECKED_CAST")
+        val navigationViews = field(activity, "navigationViews") as Map<String, View>
+        assertSame(navigationViews["movie"], navigationViews["series"])
+        assertTrue("The selected section survives window changes", navigationViews.getValue("anime").isSelected)
+        expectedKeys.forEachIndexed { index, key ->
+            val button = navigation.getChildAt(index) as ViewGroup
+            assertSame(navigationViews.getValue(key), button)
+            assertEquals("nav:$key", button.tag)
+            assertEquals(expectedLabels[index], (button.getChildAt(1) as TextView).text.toString())
+            assertTrue("$key remains at least 48dp wide", button.width >= (48 * density).roundToInt())
+            assertTrue("$key remains at least 48dp tall", button.height >= (48 * density).roundToInt())
+        }
+        fun bounds(view: View) = Rect(0, 0, view.width, view.height).also { root.offsetDescendantRectToMyCoords(view, it) }
+        val navBounds = bounds(frame)
+        val frameMargins = frame.layoutParams as ViewGroup.MarginLayoutParams
+        assertEquals("Navigation stays anchored above the system bottom inset",
+            root.height - root.paddingBottom - frameMargins.bottomMargin, navBounds.bottom)
+        assertTrue("Content ends above the bottom menu", bounds(field(activity, "scroller") as View).bottom <= navBounds.top)
+        val miniPlayer = field(activity, "miniFrame") as View
+        assertEquals(View.VISIBLE, miniPlayer.visibility)
+        assertTrue("Playing video leaves the five bottom controls clear", bounds(miniPlayer).bottom <= navBounds.top)
+        assertTrue("Scrollable content keeps mini-player clearance", (field(activity, "body") as View).paddingBottom >= (184 * density).roundToInt())
     }
 
     private fun renderFixture(activity: MainActivity, title: String) {

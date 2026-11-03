@@ -14,10 +14,10 @@ data class AdaptiveWindow(val widthDp: Int, val heightDp: Int, val isTelevision:
         widthDp < 840 -> WindowWidthClass.MEDIUM
         else -> WindowWidthClass.EXPANDED
     }
-    val useNavigationRail: Boolean get() = !isTelevision && widthDp >= 600
-    val railWidthDp: Int get() = if (useNavigationRail) 88 else 0
+    /** Touch navigation stays in the same place when a foldable opens or the window widens. */
+    val useBottomNavigation: Boolean get() = !isTelevision
     val horizontalInsetDp: Int get() = if (widthDp >= 840) 28 else 16
-    val contentWidthDp: Int get() = (widthDp - railWidthDp - horizontalInsetDp * 2).coerceAtLeast(1)
+    val contentWidthDp: Int get() = (widthDp - horizontalInsetDp * 2).coerceAtLeast(1)
     val splitFeature: Boolean get() = !isTelevision && contentWidthDp >= 560
     fun gridColumns(minimumCardWidthDp: Int = 148, gapDp: Int = 12): Int =
         ((contentWidthDp + gapDp) / (minimumCardWidthDp.coerceAtLeast(1) + gapDp)).coerceIn(1, 6)

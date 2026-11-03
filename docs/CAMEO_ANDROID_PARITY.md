@@ -1,6 +1,6 @@
-# Cameo Android 0.4.1-preview: feature mapping and boundaries
+# Cameo Android 0.4.2-preview: feature mapping and boundaries
 
-This record describes the Android source for **0.4.1-preview / versionCode 8**, retaining the feature additions from 0.4.0. It compares the supplied **Cameo Windows 0.2.4** source companion with the Android implementation built on the public Android TV **0.3.0-preview** baseline, commit `1ecffc5b68962ac84e4bd965ff36005ede2aa641`. The regular build uses `dev.pov.tv`; the side-by-side candidate uses `dev.pov.tv.cameopreview` and the launcher label **Cameo Preview**.
+This record describes the Android source for **0.4.2-preview / versionCode 9**, retaining the feature additions from 0.4.0. It compares the supplied **Cameo Windows 0.2.4** source companion with the Android implementation built on the public Android TV **0.3.0-preview** baseline, commit `1ecffc5b68962ac84e4bd965ff36005ede2aa641`. The regular build uses `dev.pov.tv`; the side-by-side candidate uses `dev.pov.tv.cameopreview` and the launcher label **Cameo Preview**.
 
 “Implemented” below means the behavior has an Android code path and relevant automated coverage where described. It does not certify a live subscription, server, codec, display, or device.
 
@@ -8,7 +8,7 @@ This record describes the Android source for **0.4.1-preview / versionCode 8**, 
 
 The Windows companion identifies its version in `README-Windows.md` and describes its features in `docs/Windows-Readme.txt`. The comparison used its actual `src/Services.cs`, `AdvancedServices.cs`, `NativeActions.cs`, `PlaylistService.cs`, `Easynews.cs`, `Player.cs`, `PlayerKeyboardInput.cs`, `IconService.cs`, `Diagnostics.cs`, and local `ui/` source.
 
-The Windows documentation describes inheritance from Cameo Mac 0.2.1. **The Mac application source itself was not supplied for this Android implementation.** Windows descriptions of Mac behavior do not establish direct Mac parity. All ten original **November 2 phone and TV concept images** were supplied for the 0.4.1 correction. The native renderers now follow their palettes, compositions, navigation and typography. The retained October Android TV galleries remain historical; current verification is recorded in [0.4.1 validation](VALIDATION_0.4.1.md).
+The Windows documentation describes inheritance from Cameo Mac 0.2.1. **The Mac application source itself was not supplied for this Android implementation.** Windows descriptions of Mac behavior do not establish direct Mac parity. All ten original **November 2 phone and TV concept images** were supplied for the 0.4.1 correction. The native renderers now follow their palettes, compositions, navigation and typography. The retained October Android TV galleries remain historical; current verification is recorded in [0.4.2 validation](VALIDATION_0.4.2.md).
 
 Android keeps its native view hierarchy, Media3 integration, remote navigation, Android document access, and private storage. It does not embed the Windows WebView2 UI, Windows binaries, or Apple frameworks.
 
@@ -66,13 +66,13 @@ Other retained Android capabilities include:
 - Media3 decoded-PCM gain options on supported output routes. VLC and passthrough routes report this boost as unavailable.
 - Exact episode selection, separate anime films/specials/related works, and manual catalog matching when metadata is incomplete.
 
-The earlier Sony playback and focus audits remain historical evidence for their recorded 0.3.0 APKs. They have not been repeated on this 0.4.1 candidate.
+The earlier Sony playback and focus audits remain historical evidence for their recorded 0.3.0 APKs. They have not been repeated on this 0.4.2 candidate.
 
 ## Phone, foldable, and TV behavior
 
 [AdaptiveLayout](../app/src/main/java/dev/pov/tv/AdaptiveLayout.kt) uses current configuration dimensions in dp and the Android television UI mode. A large screen alone does not select the TV layout.
 
-Touch windows below 600dp use bottom navigation; windows at least 600dp wide use an 88dp rail. The feature can split horizontally when the remaining content is wide enough. Text uses sp, cards and source rows wrap, and core touch actions have usable native touch sizes. The shell, title pages, anime grid, source/file lists, and mini-player avoid the old TV-only width/960 scaling.
+All touch windows keep Home / Browse / Anime / Library / Search at the bottom, including unfolded, tablet, and split-screen windows. Wider content can use more columns and a split feature independently of navigation placement. The mobile rail and its width reservation have been removed, and the mini-player stays above the bottom menu. Text uses sp, cards and source rows wrap, and core touch actions have usable native touch sizes. The shell, title pages, anime grid, source/file lists, and mini-player avoid the old TV-only width/960 scaling.
 
 Main and Player activities handle size/orientation changes without replacing the shared player solely because the window changes. Main also handles density and font-scale changes in place, keeping the detailed browsing route when a fold changes display density. The navigation callback, Back stack, selected season, and scroll are retained during the handled resize path. This does not claim full restoration of every nested screen after Android kills the process.
 

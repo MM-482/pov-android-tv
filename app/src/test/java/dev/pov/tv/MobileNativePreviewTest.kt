@@ -173,16 +173,17 @@ class MobileNativePreviewTest {
         val discoveryCount = if (viewport.tv) 5 else 2
         assertTrue("Native discovery cards exist", discoverCards.size >= discoveryCount)
         discoverCards.take(discoveryCount).forEach { assertVisibleFraction(root, it, if (viewport.tv) .95 else .35, "Discover") }
-        if (viewport.family == "phone") {
+        if (!viewport.tv) {
             for (label in listOf("Home", "Browse", "Anime", "Library", "Search")) {
                 val text = descendants(root).filterIsInstance<TextView>().firstOrNull {
                     it.text.toString() == label && bounds(root, it).top >= viewport.height * .8
                 }
-                assertTrue("$label remains visible in pinned phone navigation", text != null)
+                assertTrue("$label remains visible in pinned ${viewport.family} bottom navigation", text != null)
                 assertInside(root, requireNotNull(text), "$label navigation")
                 val button = generateSequence<View>(text) { it.parent as? View }.firstOrNull { it.isClickable }
                 assertTrue("$label has a native touch action", button != null)
                 assertTrue("$label has a 48dp touch height", requireNotNull(button).height >= (48 * viewport.density).roundToInt())
+                assertTrue("$label has a 48dp touch width", button.width >= (48 * viewport.density).roundToInt())
             }
         } else shell.navigationViews.values.distinct().forEach { assertInside(root, it, "${theme.displayName} navigation") }
         return JSONObject().put("wordmark", rect(bounds(root, wordmark)))
