@@ -1,0 +1,14 @@
+{
+  "title": "Cameo Android TV — five theme concepts",
+  "date": "2026-11-02",
+  "status": "Visual concepts only; not implemented app screenshots",
+  "generator": "Built-in image_gen",
+  "content": "Fictional illustrative film artwork and sample viewing progress; no connected accounts",
+  "assets": [
+    {"id": "01", "name": "Glass", "file": "01-cameo-glass.png", "width": 1672, "height": 941, "description": "Cool blue glass sidebar, immersive backdrop, rounded cards and bright remote focus.", "palette": ["#0B1728", "#314E6A", "#87C8FF", "#F5F8FC"]},
+    {"id": "02", "name": "Cinema", "file": "02-cameo-cinema.png", "width": 1672, "height": 941, "description": "Matte black, champagne accents, dramatic editorial title and top navigation.", "palette": ["#080807", "#D3AC70", "#E6BE84", "#F9F3E6"]},
+    {"id": "03", "name": "Slate", "file": "03-cameo-slate.png", "width": 1672, "height": 941, "description": "Graphite surfaces, emerald focus, compact featured panel and practical sidebar.", "palette": ["#1B2025", "#2A3036", "#00C986", "#F4F6F7"]},
+    {"id": "04", "name": "Pearl", "file": "04-cameo-pearl.png", "width": 1672, "height": 941, "description": "Light ivory gallery, dark serif typography, split hero and slate blue focus.", "palette": ["#F8F4EF", "#24292D", "#315779", "#81A1BF"]},
+    {"id": "05", "name": "Aurora", "file": "05-cameo-aurora.png", "width": 1672, "height": 941, "description": "Midnight violet, restrained teal glow, floating top navigation and panoramic hero.", "palette": ["#0F1024", "#24143C", "#13DBE0", "#EDEFFB"]}
+  ]
+}

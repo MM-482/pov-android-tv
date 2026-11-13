@@ -40,6 +40,7 @@ internal class AllDebridProvider(private val http: ProviderTransport) : Provider
     override fun playback(token: String, file: ProviderFile): ProviderPlayback =
         ProviderPlayback(providerHttps(call(token, "/v4/link/unlock", listOf("link" to providerHttps(file.link))).providerString("link")))
     override fun prepare(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource {
+        SourceIdentityPolicy.selected(source, identity)
         val added = call(token, "/v4/magnet/upload", listOf("magnets[]" to providerHash(source.infoHash)))
             .optJSONArray("magnets")?.optJSONObject(0)
         val id = added?.providerString("id")?.takeIf { it.isNotBlank() }

@@ -1,5 +1,7 @@
 package dev.pov.tv
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
@@ -23,7 +25,7 @@ import java.util.concurrent.ExecutorService
 
 /** Real Main dispatch/global reveal and asynchronously arriving source cards, including the top action. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [26], qualifiers = "w1920dp-h1080dp-land-mdpi")
+@Config(sdk = [26], qualifiers = "w1920dp-h1080dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class SourceScreenNavigationTest {
     @Test fun `top control enters first stream and all seventy streams traverse without bottom jumps`() {
@@ -154,6 +156,7 @@ class SourceScreenNavigationTest {
     private fun fixture(theme: ThemeSpec): Fixture {
         val owner = Robolectric.buildActivity(MainActivity::class.java)
         val activity = owner.get()
+        shadowOf(requireNotNull(activity.getSystemService(UiModeManager::class.java))).setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
         activity.setTheme(R.style.AppTheme)
         activity.window.decorView // Initialize Main's native dispatch target without starting accounts/network.
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }

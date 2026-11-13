@@ -2,23 +2,49 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application android:allowBackup="false"
         android:fullBackupContent="@xml/backup_exclusions"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:icon="@drawable/pov_icon"
-        android:label="POV" android:banner="@drawable/pov_banner"
-        android:theme="@style/AppTheme" android:usesCleartextTraffic="false"
+        android:icon="@drawable/cameo_arc"
+        android:label="Cameo" android:banner="@drawable/cameo_banner"
+        android:theme="@style/AppTheme" android:usesCleartextTraffic="true"
         android:supportsRtl="true">
         <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape"
+            android:supportsPictureInPicture="true" android:resizeableActivity="true"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
+        <activity android:name=".MainActivity" android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|fontScale|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" /><action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" /><data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+        <activity-alias android:name=".CameoArc" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true" android:icon="@drawable/cameo_arc">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias android:name=".CameoAperture" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:icon="@drawable/cameo_aperture">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".CameoEclipse" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:icon="@drawable/cameo_eclipse">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".CameoFrame" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:icon="@drawable/cameo_frame">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".CameoMonogram" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:icon="@drawable/cameo_monogram">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent-filter>
+        </activity-alias>
     </application>
 </manifest>

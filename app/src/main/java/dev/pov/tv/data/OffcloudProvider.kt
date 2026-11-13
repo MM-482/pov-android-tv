@@ -38,6 +38,7 @@ internal class OffcloudProvider(private val http: ProviderTransport) : ProviderB
     }
     override fun playback(token: String, file: ProviderFile) = ProviderPlayback(providerHttps(file.link))
     override fun prepare(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource {
+        SourceIdentityPolicy.selected(source, identity)
         // The current POV adapter uses cache/download to obtain ready file URLs without creating
         // a permanent cloud transfer. No transfer is created just to discover cache availability.
         val array = providerArray(raw(token, "/cache/download", JSONObject().put("url", providerHash(source.infoHash))))

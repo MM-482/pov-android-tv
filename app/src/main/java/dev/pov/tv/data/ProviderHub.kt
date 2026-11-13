@@ -1,6 +1,8 @@
 package dev.pov.tv.data
 
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** All methods that can perform network I/O must be called on a worker thread. */
 class ProviderHub internal constructor(private val credentials: ProviderCredentials,
@@ -8,19 +10,29 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
     constructor(store: SecureStore) : this(EncryptedProviderCredentials(store), LiveProviderTransport)
 
     val specs: List<ProviderSpec> get() = SPECS
-    private data class Session(val token: String, val username: String, val revision: String)
+    private data class Session(val token: String, val username: String, val revision: String, val activation: String)
+    private data class Profile(val id: String, val label: String, val token: String, val username: String, val revision: String) {
+        fun json(provider: String) = JSONObject().put("id", id).put("provider", provider).put("label", label).put("token", token)
+            .put("username", username).put("revision", revision)
+    }
 
     fun connected(id: String): Boolean = synchronized(lock(id)) {
         credentials.get("$id.token").isNotBlank() && (id != "easynews" || credentials.get("easynews.username").isNotBlank())
     }
-    fun accountRevision(id: String): String = synchronized(lock(id)) { credentials.get("$id.account_revision") }
-    fun connect(id: String, token: String, username: String = ""): ProviderAccount {
+    fun accountRevision(id: String): String = synchronized(lock(id)) { syncProfiles(id); credentials.get("$id.account_revision") }
+    fun accounts(providerId: String): List<ProviderAccountProfile> = synchronized(lock(providerId)) {
+        val profiles = syncProfiles(providerId)
+        val active = credentials.get("$providerId.profile_id")
+        profiles.map { ProviderAccountProfile(it.id, providerId, it.label, it.id == active) }
+    }
+    fun connect(id: String, token: String, username: String = "", profileLabel: String? = null): ProviderAccount {
         val clean = if (id == "easynews") token else token.trim()
         require(clean.isNotBlank() && clean.length <= 4096 && clean.none { it.code < 32 || it.code == 127 }) { "Enter a valid provider credential." }
         if (id != "easynews") require(clean.all { it.code in 33..126 }) { "Enter a valid provider API key or token." }
         val user = username.trim()
         if (id == "easynews") require(user.isNotBlank() && ':' !in user && user.length <= 256 && user.none { it.code < 32 || it.code == 127 }) { "Enter your Easynews username." }
-        val generation = state(id)
+        val label = profileLabel?.trim()?.also { require(it.isNotBlank() && it.length <= 120 && it.none { c -> c.code < 32 || c.code == 127 }) { "Enter a name between 1 and 120 characters." } }
+        val generation = synchronized(lock(id)) { syncProfiles(id); state(id) }
         val account = when (id) {
             "torbox" -> {
                 val value = providerObject(transport.request("https://api.torbox.app/v1/api/user/me", headers = mapOf("Authorization" to "Bearer $clean")))
@@ -31,16 +43,51 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
             "easynews" -> EasynewsProvider(transport).account(clean, user)
             else -> backend(id).account(clean, user)
         }
-        synchronized(lock(id)) {
+        mutate(id) {
+          synchronized(lock(id)) {
             check(state(id) == generation) { "The account changed while connecting. Please try again." }
-            credentials.putAll(mapOf("$id.token" to clean, "$id.username" to user,
-                "$id.account_revision" to UUID.randomUUID().toString()))
+            val profiles = syncProfiles(id)
+            val expected = profileSnapshot(id)
+            val activeId = expected["$id.profile_id"].orEmpty()
+            val target = if (label != null) UUID.randomUUID().toString() else activeId.ifBlank { UUID.randomUUID().toString() }
+            val name = label ?: profiles.singleOrNull { it.id == activeId }?.label ?: account.label.ifBlank { SPECS.first { it.id == id }.label }
+            val profile = Profile(target, name, clean, user, UUID.randomUUID().toString())
+            check(profiles.size < 100 || profiles.any { it.id == target }) { "Remove a saved account before adding another." }
+            persist(id, expected, profiles.filterNot { it.id == target } + profile, profile)
+          }
+          true
         }
         return account
     }
-    fun disconnect(id: String) = synchronized(lock(id)) {
-        credentials.putAll(mapOf("$id.token" to "", "$id.username" to "", "$id.account_revision" to UUID.randomUUID().toString()))
+    fun selectAccount(providerId: String, profileId: String) {
+        mutate(providerId) { synchronized(lock(providerId)) {
+            val profiles = syncProfiles(providerId)
+            val target = profiles.singleOrNull { it.id == profileId } ?: error("This saved account is no longer available.")
+            val expected = profileSnapshot(providerId)
+            if (expected["$providerId.profile_id"] == profileId) false
+            else { persist(providerId, expected, profiles, target); true }
+        } }
     }
+    fun removeAccount(providerId: String, profileId: String) {
+        mutate(providerId) { synchronized(lock(providerId)) {
+            val profiles = syncProfiles(providerId)
+            require(profiles.any { it.id == profileId }) { "This saved account is no longer available." }
+            val expected = profileSnapshot(providerId)
+            val removedActive = expected["$providerId.profile_id"] == profileId
+            val retained = profiles.filterNot { it.id == profileId }
+            if (removedActive) persist(providerId, expected, retained, null)
+            else saveProfiles(providerId, expected, retained)
+            removedActive
+        } }
+    }
+    fun disconnect(id: String) {
+        mutate(id) { synchronized(lock(id)) {
+            val profiles = syncProfiles(id)
+            val expected = profileSnapshot(id)
+            persist(id, expected, profiles.filterNot { it.id == expected["$id.profile_id"] }, null)
+        }; true }
+    }
+    private fun mutate(id: String, work: () -> Boolean): Boolean = if (id == "torbox") TorBoxApi.externalCredentialsChanged(work) else work()
     fun account(id: String): ProviderAccount = session(id) { account ->
         val token = account.token
         when (id) {
@@ -80,18 +127,18 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
         }
     }
     /** Caller must compare the captured account revision before presenting the resolved result. */
-    fun resolve(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): ProviderPlayback = session(id, expectedRevision) { account ->
+    fun resolve(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): ProviderPlayback =
+      if (source.directUrl.isNotBlank()) directPlayback(source) else session(id, expectedRevision) { account ->
         val token = account.token
-        if (source.directUrl.isNotBlank()) return@session ProviderPlayback(providerHttps(source.directUrl))
         when (id) {
             "torbox" -> ProviderPlayback(snapshotResolver(account).resolve(source, identity))
             "easynews" -> throw ApiException(0, "Choose an Easynews search result to play it.")
             else -> backend(id, account).resolve(token, source, identity)
         }
     }
-    fun prepare(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): ProviderPreparedSource = session(id, expectedRevision) { account ->
+    fun prepare(id: String, source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): ProviderPreparedSource =
+      if (source.directUrl.isNotBlank()) ProviderPreparedSource(playback = directPlayback(source)) else session(id, expectedRevision) { account ->
         val token = account.token
-        if (source.directUrl.isNotBlank()) return@session ProviderPreparedSource(playback = ProviderPlayback(providerHttps(source.directUrl)))
         when (id) {
             "torbox" -> when (val value = snapshotResolver(account).prepare(source, identity)) {
                 is PreparedSource.Direct -> ProviderPreparedSource(playback = ProviderPlayback(value.url))
@@ -106,8 +153,26 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
     fun searchEasynews(identity: PlaybackIdentity, expectedRevision: String? = null): List<ProviderFile> = session("easynews", expectedRevision) { account ->
         EasynewsProvider(sessionHttp("easynews", account)).search(account.token, account.username, identity)
     }
+    private fun directPlayback(source: SourceItem): ProviderPlayback {
+        val headers = source.requestHeaders
+        require(headers.size <= 30) { "This direct source requires too many request headers." }
+        val names = mutableSetOf<String>()
+        headers.forEach { (key, value) ->
+            val normalized = key.lowercase(java.util.Locale.ROOT)
+            require(key.matches(Regex("[A-Za-z0-9-]{1,80}")) && names.add(normalized) &&
+                normalized !in setOf("host", "content-length", "connection", "transfer-encoding") &&
+                value.length <= 8192 && value.none { it == '\r' || it == '\n' || (it.code < 32 && it != '\t') || it.code == 127 }) {
+                "This direct source requires unsupported request headers. Choose another source."
+            }
+        }
+        // Only this source's explicit headers accompany it; the provider account credential is separate.
+        return ProviderPlayback(providerHttps(source.directUrl), headers.toMap())
+    }
     private fun state(id: String, expectedRevision: String? = null): Session = synchronized(lock(id)) {
-        val account = Session(credentials.get("$id.token"), credentials.get("$id.username"), credentials.get("$id.account_revision"))
+        syncProfiles(id)
+        val values = credentials.snapshot(listOf("$id.token", "$id.username", "$id.account_revision", "$id.active_generation"))
+        val epoch = if (id == "torbox") TorBoxApi.accountEpoch().toString() else ""
+        val account = Session(values["$id.token"].orEmpty(), values["$id.username"].orEmpty(), values["$id.account_revision"].orEmpty(), values["$id.active_generation"].orEmpty() + ":" + epoch)
         check(expectedRevision == null || expectedRevision == account.revision) { "The provider account changed. Choose this action again." }
         account
     }
@@ -120,6 +185,60 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
         val result = work(account) // No provider lock is held while network I/O runs.
         ensureCurrent(id, account)
         return result
+    }
+    private fun profileSnapshot(id: String) = credentials.snapshot(listOf("$id.token", "$id.username", "$id.account_revision", "$id.active_generation", "$id.profile_id", "$id.profiles", "$id.profiles_initialized"))
+    private fun readProfiles(id: String, raw: String): List<Profile> {
+        if (raw.isBlank()) return emptyList()
+        return try {
+            require(raw.length <= 2 * 1024 * 1024)
+            val array = JSONArray(raw)
+            require(array.length() <= 101 && array.providerObjects().size == array.length())
+            val values = array.providerObjects().map { row ->
+                require(row.providerString("provider") == id)
+                Profile(row.getString("id"), row.getString("label"), row.getString("token"), row.optString("username"), row.getString("revision")).also {
+                    require(it.id.matches(Regex("[a-fA-F0-9-]{36}")) && it.label.isNotBlank() && it.token.isNotBlank() && it.revision.isNotBlank())
+                }
+            }
+            require(values.map { it.id }.toSet().size == values.size)
+            values
+        } catch (_: Exception) { throw IllegalStateException("Saved provider accounts could not be read. They have not been replaced.") }
+    }
+    private fun serialized(id: String, values: List<Profile>) = JSONArray().apply { values.forEach { put(it.json(id)) } }.toString()
+    private fun saveProfiles(id: String, expected: Map<String, String>, profiles: List<Profile>, extra: Map<String, String> = emptyMap()) {
+        check(credentials.putIfUnchanged(expected, extra + ("$id.profiles" to serialized(id, profiles)))) { "The provider account changed. Reopen its account settings." }
+    }
+    private fun persist(id: String, expected: Map<String, String>, profiles: List<Profile>, active: Profile?) {
+        saveProfiles(id, expected, profiles, mapOf("$id.profile_id" to active?.id.orEmpty(), "$id.token" to active?.token.orEmpty(),
+            "$id.username" to active?.username.orEmpty(), "$id.account_revision" to (active?.revision ?: UUID.randomUUID().toString()),
+            "$id.active_generation" to UUID.randomUUID().toString(), "$id.profiles_initialized" to "1"))
+    }
+    /** Imports old single-account settings and absorbs direct TorBox device-auth changes before any switch. */
+    private fun syncProfiles(id: String): List<Profile> {
+        repeat(3) {
+            val expected = profileSnapshot(id)
+            val profiles = readProfiles(id, expected["$id.profiles"].orEmpty())
+            val activeId = expected["$id.profile_id"].orEmpty()
+            val active = profiles.singleOrNull { it.id == activeId }
+            val token = expected["$id.token"].orEmpty()
+            val username = expected["$id.username"].orEmpty()
+            val revision = expected["$id.account_revision"].orEmpty()
+            if (token.isBlank()) {
+                if (activeId.isBlank()) return profiles
+                val retained = profiles.filterNot { it.id == activeId }
+                if (credentials.putIfUnchanged(expected, mapOf("$id.profiles" to serialized(id, retained), "$id.profile_id" to "", "$id.profiles_initialized" to "1"))) return retained
+            } else {
+                val changedCredentials = active != null && (active.token != token || active.username != username)
+                val actualRevision = if (revision.isBlank() || changedCredentials && revision == active?.revision ||
+                    active == null && (id == "torbox" || expected["$id.profiles_initialized"] == "1")) UUID.randomUUID().toString() else revision
+                val profile = Profile(active?.id ?: UUID.randomUUID().toString(), active?.label ?: SPECS.first { spec -> spec.id == id }.label + " account", token, username, actualRevision)
+                val updated = if (active == null) profiles + profile else profiles.map { if (it.id == profile.id) profile else it }
+                val extra = mutableMapOf("$id.profile_id" to profile.id, "$id.profiles" to serialized(id, updated), "$id.profiles_initialized" to "1")
+                if (actualRevision != revision) { extra["$id.account_revision"] = actualRevision; extra["$id.active_generation"] = UUID.randomUUID().toString() }
+                if (active == profile && expected["$id.profiles"] == extra["$id.profiles"]) return profiles
+                if (credentials.putIfUnchanged(expected, extra)) return updated
+            }
+        }
+        error("The provider account changed while reading its saved profiles. Try again.")
     }
     private fun sessionHttp(id: String, account: Session): ProviderTransport = object : ProviderTransport {
         override fun request(url: String, method: String, headers: Map<String, String>, fields: List<Pair<String, String>>?, json: org.json.JSONObject?): String {
@@ -136,6 +255,8 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
             "alldebrid" -> AllDebridProvider(http)
             "premiumize" -> PremiumizeProvider(http)
             "offcloud" -> OffcloudProvider(http)
+            "debridlink" -> DebridLinkProvider(http)
+            "putio" -> PutIoProvider(http)
             else -> throw IllegalArgumentException("Unsupported provider.")
         }
     }
@@ -164,6 +285,8 @@ class ProviderHub internal constructor(private val credentials: ProviderCredenti
             ProviderSpec("alldebrid", "AllDebrid", "API key", "https://alldebrid.com/apikeys/", true, true),
             ProviderSpec("premiumize", "Premiumize", "API key", "https://www.premiumize.me/account", true, true),
             ProviderSpec("offcloud", "Offcloud", "API key", "https://offcloud.com/#/account", true, true),
+            ProviderSpec("debridlink", "Debrid-Link", "API key or access token", "https://debrid-link.com/webapp/apikey", true, true),
+            ProviderSpec("putio", "put.io", "OAuth access token", "https://app.put.io/oauth", true, true),
             ProviderSpec("easynews", "Easynews", "Password", "https://members.easynews.com/", false, false, true))
         private val LOCKS = SPECS.associate { it.id to Any() }
     }

@@ -1,6 +1,6 @@
 # Embedded LibVLC: license, source, and rebuilding
 
-POV optionally embeds `org.videolan.android:libvlc-all:3.7.7`. This is the VideoLAN playback library, not the separate VLC Android application. POV's own interface and controls remain in this application's source. No changes to the upstream AAR, JNI bindings, or native libraries were made for this integration.
+Cameo optionally embeds `org.videolan.android:libvlc-all:3.7.7`. This is the VideoLAN playback library, not the separate VLC Android application. Cameo's own interface and controls remain in this application's source. No changes to the upstream AAR, JNI bindings, or native libraries were made for this integration. The Android 0.4.0 application adds a small Java capability-access bridge alongside the unchanged binding for explicit renderer discovery; that bridge is included in the application source. The retained native corresponding-source companion is unchanged from the 0.3.0 integration.
 
 The [official Maven POM](https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.7.7/libvlc-all-3.7.7.pom) identifies VideoLAN and declares LGPL version 2.1. The upstream Java/JNI source headers permit LGPL 2.1 or later. The complete upstream `libvlc/COPYING.LIB` text is packaged in the APK as [`LibVLC-LICENSE.txt`](../app/src/main/assets/LibVLC-LICENSE.txt); attribution is also in [`NOTICE.txt`](../app/src/main/assets/NOTICE.txt). Individual native codecs, support libraries, assets, and the C++ runtime retain their own licenses. The Maven POM's single license entry is not a complete inventory of those components. In particular, the pinned native build script defaults to a GPLv3 contrib configuration; POV's application source is GPL version 3.
 
@@ -32,6 +32,8 @@ The JNI snapshot contains the declared 3.7.7 version, the pinned native source r
 For source collection, the pinned contrib makefile's `fetch` target downloads and verifies sources for the selected package set; `fetch-all` covers all package recipes. Its `package` target archives installed contrib files rather than their source tarballs. The companion retains the conservative required source union, patches, checksums, notices and recorded configurations across all four shipped ABIs. This source-input checkpoint is distinct from compiling the native libraries.
 
 ### Prepared 0.3.0 companion source distribution
+
+The Cameo Android 0.4.0 bundle retains these exact same companion bytes as `Cameo-LibVLC-3.7.7-corresponding-sources.zip`. This is a filename alias for the verified 0.3.0 companion below; it does not claim a new native build or changed upstream sources. The complete provenance, source inventory and upstream notices inside the archive are preserved.
 
 The separate [LibVLC 3.7.7 corresponding-source companion](https://github.com/MM-482/pov-android-tv/releases/download/v0.3.0-preview/POV-Android-TV-0.3.0-LibVLC-3.7.7-corresponding-sources.zip) is prepared alongside the binary and [POV application-source ZIP](https://github.com/MM-482/pov-android-tv/releases/download/v0.3.0-preview/POV-Android-TV-0.3.0-source.zip). Versioned assets become available when their [0.3.0 release](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview) is published; consult [public releases](https://github.com/MM-482/pov-android-tv/releases) for download availability.
 

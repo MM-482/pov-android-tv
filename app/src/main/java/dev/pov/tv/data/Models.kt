@@ -29,16 +29,17 @@ data class PlaybackIdentity(
     val type: String,
     val title: String,
     val season: Int = 0,
-    val episode: Int = 0
+    val episode: Int = 0,
+    val catalogNamespace: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("imdbId", imdbId).put("type", type).put("title", title)
-        .put("season", season).put("episode", episode)
+        .put("season", season).put("episode", episode).put("catalogNamespace", catalogNamespace)
 
     companion object {
         fun fromJson(json: JSONObject): PlaybackIdentity = PlaybackIdentity(
             json.optString("imdbId"), json.optString("type"), json.optString("title"),
-            json.optInt("season"), json.optInt("episode")
+            json.optInt("season"), json.optInt("episode"), json.optString("catalogNamespace").takeUnless { it == "null" }.orEmpty()
         )
     }
 }
@@ -54,10 +55,17 @@ data class DeviceAuth(
     val intervalSeconds: Int, val expiresSeconds: Int
 )
 
+/** Exact add-on request context, separate from the add-on that supplies the stream. */
+data class SourceRequestIdentity(val catalogNamespace: String, val mediaId: String, val type: String,
+    val videoId: String, val season: Int = 0, val episode: Int = 0)
+
 data class SourceItem(
     val title: String, val provider: String, val infoHash: String = "",
     val fileIndex: Int? = null, val directUrl: String = "", val cached: Boolean = false,
-    val detail: String = ""
+    val detail: String = "",
+    val requestHeaders: Map<String, String> = emptyMap(),
+    val sourceAddonId: String = "", val resourceType: String = "", val resourceId: String = "",
+    val requestIdentity: SourceRequestIdentity? = null
 )
 
 /** A selected source either streams directly or offers stable TorBox file identities. */

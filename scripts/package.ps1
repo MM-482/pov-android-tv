@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'public-source-files.ps1')
 # Validate the entire explicit set before copying an APK or creating/overwriting a ZIP.
-$sourceFiles = @(Get-PovPublicSourceFiles -ProjectRoot $projectRoot)
+$sourceFiles = @(Get-CameoPublicSourceFiles -ProjectRoot $projectRoot)
 $buildOutput = (Get-Content -LiteralPath (Join-Path $projectRoot '.tooling\build-output-path.txt') -Raw).Trim()
 $apkSource = Join-Path $buildOutput 'outputs\apk\debug\app-debug.apk'
 if (-not (Test-Path -LiteralPath $apkSource)) { throw 'Build the app first.' }
@@ -12,10 +12,13 @@ $metadata = Get-Content -LiteralPath (Join-Path $buildOutput 'outputs\apk\debug\
 $versionName = $metadata.elements[0].versionName
 if ($versionName -notmatch '^\d+\.\d+\.\d+-preview$') { throw 'Unexpected preview version.' }
 $sourceVersion = $versionName.Replace('-preview', '')
-$apkOutput = Join-Path $outputRoot "POV-Android-TV-$versionName.apk"
+$newestSource = ($sourceFiles | Where-Object { $_.RelativePath.StartsWith('app/src/main/') -or $_.RelativePath -in @('app/build.gradle.kts','build.gradle.kts','settings.gradle.kts') } | ForEach-Object { (Get-Item -LiteralPath $_.FullName).LastWriteTimeUtc } | Sort-Object -Descending | Select-Object -First 1)
+if ((Get-Item -LiteralPath $apkSource).LastWriteTimeUtc -lt $newestSource) { throw 'The APK predates its source. Rebuild before packaging.' }
+if ($metadata.applicationId -ne 'dev.pov.tv') { throw 'Unexpected Android package.' }
+$apkOutput = Join-Path $outputRoot "Cameo-Android-$versionName.apk"
 Copy-Item -LiteralPath $apkSource -Destination $apkOutput -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$sourceOutput = Join-Path $outputRoot "POV-Android-TV-$sourceVersion-source.zip"
+$sourceOutput = Join-Path $outputRoot "Cameo-Android-$sourceVersion-source.zip"
 $fileStream = [System.IO.File]::Open($sourceOutput, [System.IO.FileMode]::Create)
 $archive = [System.IO.Compression.ZipArchive]::new($fileStream, [System.IO.Compression.ZipArchiveMode]::Create)
 try {

@@ -233,7 +233,9 @@ class SimklApi internal constructor(
         }
     }
 
-    fun markWatched(identity: PlaybackIdentity, expectedAccountRevision: String = accountRevision()) = synchronized(writeLock) {
+    fun markWatched(identity: PlaybackIdentity, expectedAccountRevision: String = accountRevision()) = setWatched(identity, true, expectedAccountRevision)
+
+    fun setWatched(identity: PlaybackIdentity, watched: Boolean, expectedAccountRevision: String = accountRevision()) = synchronized(writeLock) {
         validateIdentity(identity)
         val media = mediaObject(identity)
         val body = if (identity.type == "movie") JSONObject().put("movies", JSONArray().put(media)) else {
@@ -241,12 +243,13 @@ class SimklApi internal constructor(
                 .put("episodes", JSONArray().put(JSONObject().put("number", identity.episode)))))
             JSONObject().put("shows", JSONArray().put(media))
         }
-        val value = objectRequest("/sync/history", "POST", body, expectedAccountRevision, write = true)
+        val value = objectRequest(if (watched) "/sync/history" else "/sync/history/remove", "POST", body, expectedAccountRevision, write = true)
         val missing = value.optJSONObject("not_found")
         if (missing != null && listOf("movies", "shows", "episodes").any { (missing.optJSONArray(it)?.length() ?: 0) > 0 })
             throw ApiException(404, "Simkl could not match this title. Its watched status was not changed.")
-        val added = value.optJSONObject("added")
-        if (added == null || listOf("movies", "shows", "episodes").none { added.optInt(it, 0) > 0 || (added.optJSONArray(it)?.length() ?: 0) > 0 })
+        val added = value.optJSONObject(if (watched) "added" else "deleted")
+        val keys = if (identity.type == "movie") listOf("movies") else listOf("shows", "episodes")
+        if (added == null || keys.none { if (watched) added.optInt(it, 0) > 0 || (added.optJSONArray(it)?.length() ?: 0) > 0 else added.has(it) && added.optInt(it, -1) >= 0 })
             throw ApiException(0, "Simkl did not confirm the watched-status update. Refresh before trying again.")
     }
 
@@ -260,6 +263,12 @@ class SimklApi internal constructor(
             throw ApiException(404, "Simkl could not match this title for its watchlist.")
         if (value.optJSONObject("added")?.let { added -> listOf("movies", "shows").any { (added.optJSONArray(it)?.length() ?: 0) > 0 } } != true)
             throw ApiException(0, "Simkl did not confirm the watchlist update. Refresh before trying again.")
+    }
+
+    /** Simkl's removal endpoint deletes the shared watchlist/history record, not only watchlist membership. */
+    fun setWatchlist(item: MediaItemData, added: Boolean) {
+        require(added) { "Simkl combines watchlist and watched history in one record. Remove the item in Simkl to review that combined deletion; Cameo will not silently erase watched history." }
+        addToWatchlist(item)
     }
 
     private fun objectRequest(path: String, method: String = "GET", body: JSONObject? = null,
@@ -376,6 +385,7 @@ class SimklApi internal constructor(
     private fun stamp(value: JSONObject, key: String): String = if (value.isNull(key)) "" else value.optString(key)
     private fun mediaObject(identity: PlaybackIdentity) = JSONObject().put("title", identity.title).put("ids", JSONObject().put("imdb", identity.imdbId))
     private fun validateIdentity(identity: PlaybackIdentity) {
+        require(identity.catalogNamespace.isBlank()) { "Import this title into the verified catalog before Simkl tracking." }
         require(IMDB_ID.matches(identity.imdbId) && identity.type in setOf("movie", "series")) { "A matched IMDb movie or series is required for Simkl tracking." }
         require(identity.type == "movie" || (identity.season >= 0 && identity.episode > 0)) { "A specific episode is required for Simkl tracking." }
     }
@@ -404,7 +414,7 @@ class SimklApi internal constructor(
 
     companion object {
         private const val BASE = "https://api.simkl.com"
-        private const val USER_AGENT = "POV-Standalone/0.3"
+        private const val USER_AGENT = "Cameo-Android"
         private val IMDB_ID = Regex("tt[0-9]{5,12}")
         private val authLock = Any()
         private val tokenLock = Any()

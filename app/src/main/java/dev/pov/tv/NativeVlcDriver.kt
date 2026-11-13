@@ -35,6 +35,10 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     // Avoid native verbose logs containing signed playback URLs or provider credentials.
     private val library = LibVLC(app, arrayListOf("--quiet", "--no-video-title-show", "--network-caching=1500"))
     private val native = MediaPlayer(library)
+    private var rendererName: String? = null
+    private val rendererDiscovery = NativeVlcRendererDiscovery(app, library) { item, name ->
+        if (closed || native.setRenderer(item) != 0) false else { rendererName = name; true }
+    }
     private val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var closed = false
     private var focusHeld = false
@@ -44,6 +48,9 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     private var loading = false
     private var readyForTracks = false
     private var normalVolume = 100
+    private var desiredSpeed = 1f
+    private var desiredSubtitleDelayMicros = 0L
+    private var pendingSubtitleDelay = false
     private var outputCallback: IVLCVout.Callback? = null
     private val outputBinding = VlcOutputBinding { if (!closed) native.setVideoTrackEnabled(true) }
     private var voutCount = 0
@@ -79,6 +86,7 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
                     MediaPlayer.Event.Buffering -> { loading = event.buffering < 100f; VlcEvent.BUFFERING }
                     MediaPlayer.Event.Playing -> {
                         loading = false; readyForTracks = true
+                        native.setRate(desiredSpeed)
                         native.audioTrack.takeIf { it >= 0 }?.let { defaultTracks.putIfAbsent(C.TRACK_TYPE_AUDIO, it) }
                         defaultTracks.putIfAbsent(C.TRACK_TYPE_TEXT, native.spuTrack)
                         applyDesiredTracks(); VlcEvent.READY
@@ -88,7 +96,8 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
                     MediaPlayer.Event.EndReached -> VlcEvent.ENDED
                     MediaPlayer.Event.EncounteredError -> VlcEvent.ERROR
                     MediaPlayer.Event.ESAdded -> { applyDesiredTracks(); VlcEvent.CHANGED }
-                    MediaPlayer.Event.ESSelected, MediaPlayer.Event.ESDeleted,
+                    MediaPlayer.Event.ESSelected -> { applyPendingSubtitleDelay(); VlcEvent.CHANGED }
+                    MediaPlayer.Event.ESDeleted,
                     MediaPlayer.Event.LengthChanged, MediaPlayer.Event.SeekableChanged,
                     MediaPlayer.Event.TimeChanged -> VlcEvent.CHANGED
                     MediaPlayer.Event.Vout -> {
@@ -112,6 +121,16 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     override val surfacesReady: Boolean get() = outputBinding.surfacesReady
     override val nativeVideoTrack: Int get() = if (closed) -1 else native.videoTrack
     override val nativeVoutCount: Int get() = voutCount
+    override val rendererSupported: Boolean get() = !closed && rendererDiscovery.supported
+    override val remoteOutputName: String? get() = rendererName
+    override fun discoverRenderers(update: (VlcRendererSnapshot) -> Unit, failure: (String) -> Unit): VlcRendererScan? =
+        if (closed) null else rendererDiscovery.discover(update, failure)
+    override fun selectRenderer(id: String): Boolean = !closed && rendererDiscovery.select(id)
+    override fun disconnectRenderer(): Boolean {
+        if (closed || native.setRenderer(null) != 0) return false
+        rendererName = null
+        return true
+    }
     override val renderedFrames: Long get() {
         if (closed) return 0
         val media = native.media ?: return 0
@@ -120,9 +139,12 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
 
     override fun open(item: MediaItem, subtitleLanguage: String) {
         native.stop(); readyForTracks = false; desiredTracks.clear(); defaultTracks.clear(); size = VideoSize.UNKNOWN
+        desiredSubtitleDelayMicros = 0L
+        pendingSubtitleDelay = false
         val media = Media(library, requireNotNull(item.localConfiguration).uri)
         try {
             media.setHWDecoderEnabled(true, false)
+            PlaybackPreferences(app).captionAppearance.vlcOptions().forEach(media::addOption)
             if (subtitleLanguage.isNotBlank()) media.addOption(":sub-language=${languageAlternatives(subtitleLanguage)}")
             item.localConfiguration?.subtitleConfigurations?.forEach {
                 media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 4, it.uri.toString()))
@@ -141,6 +163,51 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     override fun setVolume(volume: Float) {
         normalVolume = (volume.coerceIn(0f, 1f) * 100).toInt()
         native.setVolume(normalVolume)
+    }
+
+    override fun setPlaybackSpeed(speed: Float): Boolean {
+        if (closed || !speed.isFinite() || speed !in 0.5f..2f) return false
+        desiredSpeed = speed
+        if (readyForTracks) native.setRate(speed)
+        return true
+    }
+    override val subtitleDelayMicros: Long get() = if (closed || !readyForTracks || pendingSubtitleDelay) desiredSubtitleDelayMicros else native.spuDelay
+    override fun setSubtitleDelayMicros(delay: Long): Boolean {
+        if (closed || delay !in -60_000_000L..60_000_000L) return false
+        if (readyForTracks && !native.setSpuDelay(delay)) return false
+        desiredSubtitleDelayMicros = delay
+        pendingSubtitleDelay = !readyForTracks
+        return true
+    }
+    override fun restoreSubtitleDelayMicros(delay: Long): Boolean {
+        if (closed || delay !in -60_000_000L..60_000_000L) return false
+        desiredSubtitleDelayMicros = delay
+        pendingSubtitleDelay = true
+        applyPendingSubtitleDelay()
+        return true
+    }
+    private fun applyPendingSubtitleDelay() {
+        if (!closed && readyForTracks && pendingSubtitleDelay && native.setSpuDelay(desiredSubtitleDelayMicros)) pendingSubtitleDelay = false
+    }
+    override fun chapters(): List<PlaybackChapter> {
+        if (closed || !readyForTracks) return emptyList()
+        return native.getChapters(-1)?.take(200)?.mapIndexed { index, chapter ->
+            PlaybackChapter(index, chapter.name?.takeIf(String::isNotBlank)?.take(180) ?: "Chapter ${index + 1}",
+                chapter.timeOffset.coerceAtLeast(0L), chapter.duration.coerceAtLeast(0L), native.chapter == index)
+        } ?: emptyList()
+    }
+    override fun selectChapter(index: Int): Boolean {
+        if (chapters().none { it.index == index }) return false
+        native.chapter = index
+        return true
+    }
+    override fun playbackDetails(): NativePlaybackDetails? {
+        if (closed) return null
+        val media = native.media ?: return null
+        return try {
+            media.stats?.let { stats -> NativePlaybackDetails(stats.decodedVideo.toLong(), stats.displayedPictures.toLong(),
+                stats.lostPictures.toLong(), (stats.inputBitrate.coerceAtLeast(0f) * 8000).toLong()) }
+        } finally { media.release() }
     }
 
     override fun tracks(): List<VlcTrack> {
@@ -196,6 +263,7 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
                 if (type == C.TRACK_TYPE_AUDIO) native.setAudioTrack(id) else native.setSpuTrack(id)
             }
         }
+        applyPendingSubtitleDelay()
         // Startup language selection belongs to the media's :sub-language option.
         // Do not restart an adaptive elementary stream on its first Playing/ESAdded
         // notification merely to reapply the same preference. Explicit menu Automatic
@@ -252,14 +320,17 @@ internal class NativeVlcDriver(context: Context) : VlcPlaybackDriver {
     }
 
     override fun addSubtitle(uri: Uri): Boolean {
-        val result = native.addSlave(IMedia.Slave.Type.Subtitle, uri, true)
-        // An explicitly loaded subtitle should not be replaced by a later language auto-selection.
-        if (result) desiredTracks.remove(C.TRACK_TYPE_TEXT)
-        return result
+        if (closed) return false
+        return ExplicitSubtitleSelection.attach(C.TRACK_TYPE_TEXT, desiredTracks) {
+            native.addSlave(IMedia.Slave.Type.Subtitle, uri, true)
+        }
     }
 
     override fun release() {
         if (closed) return
+        rendererDiscovery.close()
+        if (rendererName != null) native.setRenderer(null)
+        rendererName = null
         detach(); closed = true; listener = null
         native.setEventListener(null); native.stop(); native.release(); library.release()
         app.unregisterReceiver(noisyReceiver); abandonFocus()

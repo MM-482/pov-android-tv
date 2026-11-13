@@ -65,6 +65,22 @@ class PlaybackPreferencesTest {
         assertEquals("en", PlaybackPreferences(context).subtitleLanguage)
     }
 
+    @Test fun `caption appearance survives reopening with desktop choice values`() {
+        preferences.edit().clear().commit()
+        val chosen = CaptionAppearance(size = 12, color = 0xFFFF00, backgroundOpacity = 128, bottomMargin = 40)
+        PlaybackPreferences(context).captionAppearance = chosen
+        assertEquals(chosen, PlaybackPreferences(context).captionAppearance)
+        assertEquals(listOf(":freetype-rel-fontsize=12", ":freetype-color=16776960", ":freetype-background-opacity=128",
+            ":freetype-background-color=0", ":sub-margin=40"), chosen.vlcOptions())
+    }
+
+    @Test fun `corrupt caption defaults cannot reach native options`() {
+        preferences.edit().clear().putString("caption_size", "private-bad-input").putInt("caption_color", -1)
+            .putInt("caption_background", 999).putInt("caption_margin", -99).commit()
+        assertEquals(CaptionAppearance(), PlaybackPreferences(context).captionAppearance)
+        try { CaptionAppearance(size = 999); fail("Unsupported caption size accepted") } catch (_: IllegalArgumentException) { }
+    }
+
     private fun expectInvalid(action: () -> Unit) {
         try { action(); fail("Invalid playback preference should be rejected") } catch (_: IllegalArgumentException) { }
     }

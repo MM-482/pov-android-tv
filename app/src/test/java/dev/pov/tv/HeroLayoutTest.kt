@@ -1,5 +1,7 @@
 package dev.pov.tv
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -12,12 +14,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.ExecutorService
 
 /** Exercises the actual native view tree without starting account or network work. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 class HeroLayoutTest {
     @Test fun `long feature titles cannot shrink or hide the primary action in any hero theme`() {
         for (theme in ThemeSpec.entries.filter { it != ThemeSpec.DASHBOARD }) {
@@ -44,6 +47,7 @@ class HeroLayoutTest {
 
     private fun render(theme: ThemeSpec, title: String): Pair<ViewGroup, MainActivity> {
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
+        shadowOf(requireNotNull(activity.getSystemService(UiModeManager::class.java))).setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
         activity.setTheme(R.style.AppTheme)
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         set(activity, "theme", theme); set(activity, "body", body)

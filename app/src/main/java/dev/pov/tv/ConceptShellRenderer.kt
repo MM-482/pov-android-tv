@@ -58,8 +58,16 @@ class ConceptShellRenderer(private val context: Context, private val theme: Them
             }
             ui.place(root,rail,profile.railX,profile.railY,profile.railWidth,profile.railHeight)
         }
-        val logo=ImageView(context).apply { setImageResource(R.drawable.pov_wordmark);scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="POV" }
-        ui.place(root,logo,profile.logoX,profile.logoY,profile.logoWidth,profile.logoHeight)
+        val logoWidth=if(profile.railWidth>0)maxOf(profile.logoWidth,profile.railWidth-24)
+            else (profile.navX-profile.logoX-10).coerceAtLeast(profile.logoWidth)
+        val logoX=if(profile.railWidth>0)profile.railX+(profile.railWidth-logoWidth)/2 else profile.logoX
+        val logo=TextView(context).apply {
+            tag="concept:wordmark";text="CAMEO";setTextColor(theme.palette.text);typeface=ui.font(650)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX,ui.px(18).toFloat());gravity=Gravity.CENTER;letterSpacing=.10f;contentDescription="Cameo"
+            maxLines=1;setHorizontallyScrolling(false);includeFontPadding=false
+            setAutoSizeTextTypeUniformWithConfiguration(ui.px(12).coerceAtLeast(1),ui.px(18).coerceAtLeast(2),1,TypedValue.COMPLEX_UNIT_PX)
+        }
+        ui.place(root,logo,logoX,profile.logoY,logoWidth,profile.logoHeight)
 
         val navigation=linkedMapOf<String,View>()
         val primary=destinations.filter { it.key !in setOf("trakt","nowplaying") }

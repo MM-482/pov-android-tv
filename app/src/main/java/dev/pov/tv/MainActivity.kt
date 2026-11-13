@@ -34,6 +34,13 @@ import javax.net.ssl.HttpsURLConnection
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class MainActivity : Activity() {
+    private val mobileMode get() = !CameoDevice.isTelevision(this)
+    private lateinit var library: CameoLibraryStore
+    private lateinit var desktopServices: DesktopServiceHub
+    private lateinit var addons: AddonCatalogApi
+    private var pendingSave: ((Uri) -> Unit)? = null
+    private var pendingPlaylistImport: String? = null
+    private var importCancellation:android.os.CancellationSignal?=null
     private lateinit var store: SecureStore
     private lateinit var torbox: TorBoxApi
     private lateinit var trakt: TraktApi
@@ -41,7 +48,7 @@ class MainActivity : Activity() {
     private lateinit var mdblist: MdbListApi
     private lateinit var resolver: SourceResolver
     private lateinit var providers: ProviderHub
-    private val catalog = CatalogApi()
+    private lateinit var catalog: CatalogApi
     private lateinit var history: PlaybackStore
     private lateinit var playbackPreferences: PlaybackPreferences
     private val continueOptions = java.util.WeakHashMap<View, () -> Unit>()
@@ -96,11 +103,12 @@ class MainActivity : Activity() {
     private var studioNextRevision = ""
     private var studioNextEpisodes = emptyList<PlaybackIdentity>()
     private var studioNextLoadedAt = 0L
-    private val bg get() = theme.palette.background
-    private val panel get() = theme.palette.panel
-    private val muted get() = theme.palette.muted
-    private val accent get() = theme.palette.accent
-    private val ink get() = theme.palette.text
+    private val activePalette get() = if (mobileMode) MobileCameoTheme.from(theme).palette else theme.palette
+    private val bg get() = activePalette.background
+    private val panel get() = activePalette.panel
+    private val muted get() = activePalette.muted
+    private val accent get() = activePalette.accent
+    private val ink get() = activePalette.text
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,21 +116,51 @@ class MainActivity : Activity() {
         playbackAuditPreview = debug && intent.getBooleanExtra("playback_audit_preview", false)
         val sourcePreview = debug && intent.getBooleanExtra("source_choice_preview", false)
         publicPreview = debug && (intent.getBooleanExtra("public_preview", false) || sourcePreview || playbackAuditPreview)
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        if (!mobileMode) {
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        }
         store = SecureStore(this); torbox = TorBoxApi(store); trakt = TraktApi(store)
+        catalog = CatalogApi(this)
         simkl = SimklApi(store); mdblist = MdbListApi(store)
         resolver = SourceResolver(store, torbox); history = PlaybackStore(this)
         providers = ProviderHub(store)
+        library = CameoLibraryStore(store); desktopServices = DesktopServiceHub(store); addons = AddonCatalogApi(store)
+        CameoDownloads.initialize(this)
         playbackPreferences = PlaybackPreferences(this)
         themePreferences = ThemePreferences(this)
-        theme = if (publicPreview) ThemeSpec.conceptFromId(themePreferences.selected().id) else themePreferences.selectedConcept()
-        anime = AnimeCatalogApi(trakt)
+        theme = if (mobileMode) MobileCameoTheme.entries.firstOrNull { it.name == getSharedPreferences("cameo_mobile_appearance", MODE_PRIVATE).getString("theme", "GLASS") }?.foundation ?: ThemeSpec.GLASS
+            else if (publicPreview) ThemeSpec.conceptFromId(themePreferences.selected().id) else themePreferences.selectedCameoTv()
+        anime = AnimeCatalogApi(this,trakt)
         InAppPlaybackSession.initialize(this)
         InAppPlaybackSession.addListener(playbackChanged)
-        shell(); if (sourcePreview) sourceChoiceAudit() else home(); if (!publicPreview) { retrySync(); AdditionalTracking.retry(this) }
+        CameoPlaybackQueue.rebind { entry->Handler(Looper.getMainLooper()).post{if(!isDestroyed)playLibraryEntry(entry)} }
+        shell(); if (sourcePreview) sourceChoiceAudit() else home(); if (!publicPreview) { retrySync(); AdditionalTracking.retry(this);openRequestedIdentity();openIncomingVideos() }
         window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener(contentFocusChanged)
     }
 
+    override fun onNewIntent(intent:Intent) {super.onNewIntent(intent);setIntent(intent);openRequestedIdentity();if(!publicPreview)openIncomingVideos()}
+    override fun onConfigurationChanged(newConfig:android.content.res.Configuration) {
+        val drafts=if(::body.isInitialized)CameoFormDrafts.capture(body)else null
+        val restore=if(::focusController.isInitialized)focusController.capture()else null
+        super.onConfigurationChanged(newConfig)
+        shell();pendingFocus=restore;current();refreshNavigation()
+        if(drafts!=null&&drafts.fields.isNotEmpty()) {
+            // An input owns its caret across a rebuild, including hardware-keyboard mode.
+            // A TV row snapshot may have no key for an EditText and would select the first field.
+            if(!mobileMode||drafts.fields.any{it.focused}) {pendingFocus=null;wantsContentFocus=false}
+            val rebuiltBody=body;val rebuiltGeneration=generation
+            CameoFormDrafts.restore(rebuiltBody,drafts)
+            rebuiltBody.post{if(body===rebuiltBody&&generation==rebuiltGeneration)CameoFormDrafts.restore(rebuiltBody,drafts)}
+        }
+        focusAfterRender(generation)
+    }
+    private fun openRequestedIdentity() {
+        val value=intent.getStringExtra("open_identity")?:return;intent.removeExtra("open_identity")
+        val identity=runCatching{PlaybackIdentity.fromJson(org.json.JSONObject(value))}.getOrNull()?:return
+        if(identity.catalogNamespace.isBlank()&&identity.imdbId.matches(Regex("tt[0-9]+"))&&identity.type in setOf("movie","series"))
+            navigate{showSources(identity)}
+    }
     override fun onResume() {
         super.onResume(); resumed = true; launchingPlayer = false
         if (::badge.isInitialized) updateBadge()
@@ -138,6 +176,7 @@ class MainActivity : Activity() {
         super.onStop()
     }
     override fun onDestroy() {
+        importCancellation?.cancel();importCancellation=null
         window.decorView.viewTreeObserver.takeIf { it.isAlive }?.removeOnGlobalFocusChangeListener(contentFocusChanged)
         currentPlaybackOptionsDialog?.dismiss(); currentPlaybackOptionsDialog = null
         currentContinueOptionsDialog?.dismiss(); currentContinueOptionsDialog = null
@@ -150,7 +189,7 @@ class MainActivity : Activity() {
         if (backStack.isNotEmpty()) {
             val saved = backStack.removeLast(); current = saved.screen; destination = saved.destination
             pendingFocus = saved.focus; current(); refreshNavigation()
-        } else AlertDialog.Builder(this).setTitle("Leave POV?")
+        } else AlertDialog.Builder(this).setTitle("Leave Cameo?")
             .setPositiveButton(if (InAppPlaybackSession.hasActive()) "Stop and leave" else "Leave") { _, _ -> InAppPlaybackSession.stop(); finish() }
             .setNegativeButton("Stay", null).show()
     }
@@ -197,7 +236,7 @@ class MainActivity : Activity() {
     private fun destinations() = listOf(
         Destination("home", "Home") { home() }, Destination("movie", "Movies") { catalogPage("movie") },
         Destination("series", "Shows") { catalogPage("series") }, Destination("anime", "Anime") { animePage() },
-        Destination("library", "Library") { cloud("torrents") }, Destination("search", "Search") { search() },
+        Destination("library", "Library") { libraryPage() }, Destination("search", "Search") { search() },
         Destination("trakt", "My Trakt") { traktPage() }, Destination("settings", "Settings") { settings() }) +
         if ((!publicPreview || playbackAuditPreview) && InAppPlaybackSession.hasActive()) listOf(Destination("nowplaying", "Now playing") { returnToVideo() }) else emptyList()
 
@@ -205,7 +244,7 @@ class MainActivity : Activity() {
         miniPlayer?.let(InAppPlaybackSession::detachPlayerView)
         miniPlayer = null; miniFrame = null; miniLabel = null; miniFocus = null
         navigationViews.clear()
-        if (theme.conceptProfile != null) {
+        if (mobileMode || theme.conceptProfile != null) {
             val targets = destinations().filter { it.key !in setOf("trakt", "nowplaying") }.map { target ->
                 ConceptDestination(target.key, if (target.key == "series") "TV Shows" else target.label) {
                     if (target.key == "search") target.screen()
@@ -215,7 +254,9 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            val rendered = ConceptShellRenderer(this, theme).render(targets) { destination }
+            val rendered = if (mobileMode) MobileCameoRenderer(this, MobileCameoTheme.from(theme)).shell(targets) { destination }
+                else if(theme.isCameoTv) CameoTvRenderer(this,theme).shell(targets){destination}
+                else ConceptShellRenderer(this, theme).render(targets) { destination }
             shellRoot = rendered.root; body = rendered.body; scroller = rendered.scroller
             heroBackdrop = rendered.heroBackdrop; backdropArt = rendered.backdropArt; badge = rendered.badge
             navigationViews.putAll(rendered.navigationViews)
@@ -225,6 +266,7 @@ class MainActivity : Activity() {
             }
             scroller.setOnScrollChangeListener { _, _, y, _, _ -> heroBackdrop.translationY = -y.toFloat() }
             setContentView(shellRoot); updateBadge(); refreshNavigation()
+            if(mobileMode)applyMobileSystemBars()
             if (resumed) updateMiniPlayer()
             return
         }
@@ -282,12 +324,12 @@ class MainActivity : Activity() {
     }
 
     private fun logo() = ImageView(this).apply {
-        setImageResource(R.drawable.pov_icon); scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "POV"
+        setImageResource(R.drawable.cameo_arc); scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "Cameo"
     }
 
     private fun navigation(target: Destination, top: Boolean): View {
         val frame = FrameLayout(this).apply {
-            isFocusable = true; isFocusableInTouchMode = true; isClickable = true; contentDescription = target.label
+            isFocusable = true; isFocusableInTouchMode = !mobileMode; isClickable = true; contentDescription = target.label
             tag = "nav:${target.key}"
         }
         val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -307,8 +349,8 @@ class MainActivity : Activity() {
             label.setTextColor(color); label.typeface = Typeface.create("sans-serif", if (selected) Typeface.BOLD else Typeface.NORMAL)
             for (index in 0 until line.childCount) (line.getChildAt(index) as? NavigationIconView)?.tint = color
             indicator.visibility = if (selected) View.VISIBLE else View.INVISIBLE
-            if (selected && theme == ThemeSpec.EDITORIAL) indicator.background = rounded(theme.palette.secondaryAccent, 2)
-            frame.background = rounded(if (focused || (!top && selected) || (theme == ThemeSpec.DASHBOARD && selected)) theme.palette.navSelected else Color.TRANSPARENT, if (theme == ThemeSpec.DASHBOARD) 24 else 7)
+            if (selected && theme == ThemeSpec.EDITORIAL) indicator.background = rounded(activePalette.secondaryAccent, 2)
+            frame.background = rounded(if (focused || (!top && selected) || (theme == ThemeSpec.DASHBOARD && selected)) activePalette.navSelected else Color.TRANSPARENT, if (theme == ThemeSpec.DASHBOARD) 24 else 7)
             frame.foreground = if (focused) FocusRingDrawable(accent, dp(if (theme == ThemeSpec.DASHBOARD) 24 else 7).toFloat(), true, dp(1).toFloat()) else null
         }
         frame.setOnFocusChangeListener { _, focused -> paint(focused) }
@@ -331,9 +373,9 @@ class MainActivity : Activity() {
         val box = !publicPreview && try { providers.connected(provider.id) } catch (_: Exception) { false }
         val tracked = !publicPreview && try { trakt.connected() } catch (_: Exception) { false }
         val value = android.text.SpannableString("●  ${provider.label}    ●  Trakt")
-        value.setSpan(android.text.style.ForegroundColorSpan(if (box) theme.palette.success else muted), 0, 1, 0)
+        value.setSpan(android.text.style.ForegroundColorSpan(if (box) activePalette.success else muted), 0, 1, 0)
         val secondDot = value.toString().indexOf('●', 1)
-        value.setSpan(android.text.style.ForegroundColorSpan(if (tracked) theme.palette.success else muted), secondDot, secondDot + 1, 0)
+        value.setSpan(android.text.style.ForegroundColorSpan(if (tracked) activePalette.success else muted), secondDot, secondDot + 1, 0)
         badge.text = value
         badge.contentDescription = "${provider.label} ${if (box) "linked" else "not linked"}. Trakt ${if (tracked) "linked" else "not linked"}."
     }
@@ -345,6 +387,15 @@ class MainActivity : Activity() {
         body.post {
             if (id != generation || isDestroyed) return@post
             val restore = pendingFocus
+            if(mobileMode&&body.findFocus() is EditText) {
+                pendingFocus=null;wantsContentFocus=false
+                return@post
+            }
+            if(mobileMode&&body.isInTouchMode) {
+                pendingFocus=null;wantsContentFocus=false
+                if(restore!=null)scroller.scrollTo(0,restore.scrollY)
+                return@post
+            }
             if (restore != null) {
                 if (focusController.restore(restore) || focusController.restore(null)) { pendingFocus = null; wantsContentFocus = false }
             } else if (wantsContentFocus && !focusController.hasVisibleLeafFocus()) {
@@ -354,10 +405,11 @@ class MainActivity : Activity() {
     }
     private fun page(title: String, subtitle: String = ""): Int {
         generation++; resolvingGeneration = null; isHome = false; wantsContentFocus = true
+        mobilePageInsets(false)
         continueOptions.clear()
-        if (theme.conceptProfile != null) ConceptShellRenderer.applyContentInsets(scroller, theme, home = false)
+        if (!mobileMode && theme.conceptProfile != null) ConceptShellRenderer.applyContentInsets(scroller, theme, home = false)
         focusController.reset(); body.removeAllViews(); heroBackdrop.visibility = View.GONE
-        body.setPadding(0, dp(if (theme.layout.navigation == NavigationPlacement.LEFT_RAIL) 63 else 15), 0, contentBottomPadding())
+        body.setPadding(dp(if(mobileMode)16 else 0), dp(if(mobileMode)16 else if(theme.layout.navigation == NavigationPlacement.LEFT_RAIL)63 else 15), dp(if(mobileMode)16 else 0), contentBottomPadding())
         scroller.scrollTo(0, 0); heroBackdrop.translationY = 0f
         if (title.isNotBlank()) body.addView(text(title, 29, ink, true), margin(-1, -2, bottom = 5))
         if (subtitle.isNotBlank()) body.addView(text(subtitle, 12, muted), margin(-1, -2, bottom = 18))
@@ -371,7 +423,7 @@ class MainActivity : Activity() {
         val recent = if (publicPreview) emptyList() else history.continueWatching()
         read(id, { catalog.popular("movie") to catalog.popular("series") }) { (movies, series) ->
             if (theme.conceptProfile != null) {
-                val revision = if (theme == ThemeSpec.STUDIO && !publicPreview)
+                val revision = if ((theme == ThemeSpec.STUDIO || mobileMode || theme.isCameoTv) && !publicPreview)
                     runCatching { if (trakt.connected()) trakt.accountRevision() else "" }.getOrDefault("") else ""
                 if (studioNextRevision != revision) {
                     studioNextRevision = revision; studioNextEpisodes = emptyList(); studioNextLoadedAt = 0
@@ -400,6 +452,25 @@ class MainActivity : Activity() {
     }
 
     private fun renderConceptHome(movies: List<MediaItemData>, series: List<MediaItemData>, recent: List<PlaybackStore.Recent>, upNext: List<PlaybackIdentity>) {
+        if (mobileMode) {
+            mobilePageInsets(true)
+            MobileCameoRenderer(this, MobileCameoTheme.from(theme)).home(body, ConceptHomeData(movies, series, recent, upNext),
+                ConceptHomeCallbacks({ view,address -> image(view,address) }, { item -> navigate { details(item) } },
+                    { item -> navigate { details(item) } }, ::resumeSaved,
+                    { target -> navigate { catalogPage(if(target=="series") "series" else "movie") } },
+                    { view,saved -> bindContinueOptions(view,saved.key,saved.identity,saved.title){resumeSaved(saved)} },
+                    { identity -> navigate { showSources(identity) } })) { item -> library.setWatchlist(item,true); toast("Added to your library") }
+            return
+        }
+        if(theme.isCameoTv) {
+            CameoTvRenderer(this,theme).home(body,heroBackdrop,backdropArt,ConceptHomeData(movies,series,recent,upNext),
+                ConceptHomeCallbacks({view,address->image(view,address)}, {item->navigate{details(item)}},
+                    {item->if(item.type=="movie")navigate{showSources(PlaybackIdentity(item.imdbId,item.type,item.title))}else navigate{details(item)}},
+                    ::resumeSaved,{target->navigate{when(target){"anime"->animePage();"series","shows"->catalogPage("series");else->catalogPage("movie")}}},
+                    {view,saved->bindContinueOptions(view,saved.key,saved.identity,saved.title){resumeSaved(saved)}},
+                    {identity->navigate{showSources(identity)}})) {item->library.setWatchlist(item,true);toast("Added to your library")}
+            focusAfterRender(generation);return
+        }
         ConceptHomeRenderer(this, theme).render(body, heroBackdrop, backdropArt,
             ConceptHomeData(movies, series, recent, upNext), ConceptHomeCallbacks(
                 loadImage = { view, address -> image(view, address) },
@@ -430,7 +501,7 @@ class MainActivity : Activity() {
                 val episodes = trakt.nextEpisodes(expectedRevision = revision)
                 if (!trakt.connected() || trakt.accountRevision() != revision) return@execute
                 runOnUiThread {
-                    if (id != generation || !isHome || theme != ThemeSpec.STUDIO || isFinishing || isDestroyed ||
+                    if (id != generation || !isHome || !(theme == ThemeSpec.STUDIO || mobileMode || theme.isCameoTv) || isFinishing || isDestroyed ||
                         !trakt.connected() || trakt.accountRevision() != revision) return@runOnUiThread
                     studioNextEpisodes = episodes; studioNextLoadedAt = System.currentTimeMillis()
                     if (episodes.isEmpty()) return@runOnUiThread
@@ -439,7 +510,7 @@ class MainActivity : Activity() {
                         val rect = android.graphics.Rect(0, 0, focused.width, focused.height)
                         body.offsetDescendantRectToMyCoords(focused, rect)
                         // Do not replace the episode column while someone is navigating within it.
-                        if (rect.left >= dp(680) && rect.top < dp(345)) return@runOnUiThread
+                        if (theme == ThemeSpec.STUDIO && rect.left >= dp(680) && rect.top < dp(345)) return@runOnUiThread
                         pendingFocus = focusController.capture()
                     }
                     continueOptions.clear()
@@ -453,6 +524,13 @@ class MainActivity : Activity() {
     }
 
     private fun hero(item: MediaItemData, showAction: Boolean = true) {
+        if (mobileMode) {
+            val art = ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; contentDescription=item.title }
+            image(art,item.background.ifBlank { item.poster }); body.addView(art,margin(-1,195,bottom=12))
+            body.addView(text(item.title,27,ink,true),margin(-1,-2,bottom=8))
+            body.addView(text(listOf(item.year,item.runtime,item.genres.firstOrNull().orEmpty()).filter(String::isNotBlank).joinToString(" · "),14,muted),margin(-1,-2,bottom=10))
+            return
+        }
         val layout = theme.layout
         val split = layout.hero == HeroComposition.SPLIT
         val framed = layout.hero == HeroComposition.FRAMED
@@ -550,7 +628,7 @@ class MainActivity : Activity() {
             } else row.addView(tile(item, saved.position.toDouble() / saved.duration.coerceAtLeast(1), remaining, action).apply {
                 tag = "resume:${saved.key}"
                 bindContinueOptions(this, saved.key, saved.identity, saved.title, action)
-            }, margin(cardWidth(), theme.layout.cardHeightDp, right = theme.layout.cardGapDp))
+            }, margin(cardWidth(), if(mobileMode)215 else theme.layout.cardHeightDp, right = theme.layout.cardGapDp))
         }
     }
 
@@ -704,8 +782,8 @@ class MainActivity : Activity() {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (miniFrame == null) {
             val frame = FrameLayout(this).apply {
-                background = rounded(Color.BLACK, 8); clipToOutline = true; isFocusable = true; isFocusableInTouchMode = true; isClickable = true
-                tag = "return-to-video"; contentDescription = "Now playing. Select to return to video. Hold Select or press Menu for playback options."
+                background = rounded(Color.BLACK, 8); clipToOutline = true; isFocusable = true; isFocusableInTouchMode = !mobileMode; isClickable = true
+                tag = "return-to-video"; contentDescription = if(mobileMode) "Now playing. Tap to return to video. Long press for playback options." else "Now playing. Select to return to video. Hold Select or press Menu for playback options."
             }
             val video = PlayerView(this).apply {
                 useController = false; setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
@@ -718,7 +796,7 @@ class MainActivity : Activity() {
             }
             val label = text("", 11, Color.WHITE, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
             caption.addView(label)
-            caption.addView(text("Select to return · Hold Select for options", 9, 0xFFD3DFED.toInt()).apply { maxLines = 1 })
+            caption.addView(text(if(mobileMode) "Tap to return · Hold for options" else "Select to return · Hold Select for options", 9, 0xFFD3DFED.toInt()).apply { maxLines = 1 })
             frame.addView(caption, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
             frame.setOnFocusChangeListener { view, focused ->
                 if (focused) { pendingFocus = null; wantsContentFocus = false }
@@ -728,7 +806,7 @@ class MainActivity : Activity() {
             frame.setOnClickListener { returnToVideo() }
             frame.setOnLongClickListener { playbackOptions(); true }
             shellRoot.addView(frame, FrameLayout.LayoutParams(dp(247), dp(145), Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(20); bottomMargin = dp(15)
+                rightMargin = dp(20); bottomMargin = dp(if(mobileMode)84 else 15)
             })
             miniFrame = frame; miniPlayer = video; miniLabel = label
             miniFocus = MiniPlayerFocusRouter(body, frame)
@@ -748,6 +826,11 @@ class MainActivity : Activity() {
 
     private fun updatePlaybackNavigation(active: Boolean) {
         val existing = navigationViews["nowplaying"]
+        if(mobileMode) {
+            (existing?.parent as? ViewGroup)?.removeView(existing)
+            navigationViews.remove("nowplaying")
+            return
+        }
         if (active == (existing != null)) return
         if (!active) {
             val restoreFocus = existing?.hasFocus() == true
@@ -784,12 +867,12 @@ class MainActivity : Activity() {
         read(id, { if (query.isBlank()) anime.popular(type, skip) else anime.search(query, type, skip) }) { result ->
             if (result.items.isEmpty()) body.addView(text("No anime found. Try a different title or category.", 14, muted), margin(-1, -2, top = 20))
             val width = 960 - theme.layout.railWidthDp - theme.layout.contentInsetDp * 2
-            val count = (width / (cardWidth() + theme.layout.cardGapDp)).coerceAtLeast(1)
+            val count = if(mobileMode)2 else (width / (cardWidth() + theme.layout.cardGapDp)).coerceAtLeast(1)
             result.items.chunked(count).forEach { group ->
                 val row = LinearLayout(this); body.addView(row, margin(-1, -2, top = 14))
                 group.forEach { title ->
                     val media = MediaItemData("", title.type, title.title, title.year, title.poster, title.background, title.description, title.genres)
-                    row.addView(tile(media, caption = animeFormat(title)) { navigate { animeDetails(title) } }.apply { tag = "anime:${title.kitsuId}" }, margin(cardWidth(), theme.layout.cardHeightDp, right = theme.layout.cardGapDp))
+                    row.addView(tile(media, caption = animeFormat(title)) { navigate { animeDetails(title) } }.apply { tag = "anime:${title.kitsuId}" }, margin(cardWidth(), if(mobileMode)215 else theme.layout.cardHeightDp, right = theme.layout.cardGapDp))
                 }
             }
             val paging = horizontalRow()
@@ -917,17 +1000,18 @@ class MainActivity : Activity() {
     }
 
     private fun appearance() {
+        if (mobileMode) { mobileAppearance(); return }
         current = { appearance() }
         destination = "settings"; refreshNavigation()
-        page("Appearance", "Choose one of the six approved designs. Your accounts and playback stay connected.")
+        page("Appearance", "Choose one of the five Cameo TV designs.")
         val width = theme.conceptProfile?.let { 960 - it.contentLeft - it.contentRight }
             ?: (960 - theme.layout.railWidthDp - theme.layout.contentInsetDp * 2)
         val tileWidth = (width - 12) / 2
-        ThemeSpec.selectableThemes.chunked(2).forEach { choices ->
+        ThemeSpec.allSelectableThemes.chunked(2).forEach { choices ->
             val row = LinearLayout(this); body.addView(row, margin(-1, -2, bottom = 16))
             choices.forEachIndexed { column, choice ->
                 val tile = column().apply {
-                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true; tag = "theme:${choice.id}"; contentDescription = "Apply ${choice.displayName} theme"
+                    isFocusable = true; isFocusableInTouchMode = !mobileMode; isClickable = true; tag = "theme:${choice.id}"; contentDescription = "Apply ${choice.displayName} theme"
                     background = rounded(panel, 9); setPadding(dp(6), dp(6), dp(6), dp(10))
                 }
                 val art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = rounded(panel, 6); clipToOutline = true }
@@ -946,17 +1030,25 @@ class MainActivity : Activity() {
         body.addView(text("Design previews use sample artwork. Your home screen uses live titles and your viewing progress.", 11, muted), margin(-1, -2, top = 5)); focusAfterRender(generation)
     }
 
-    private fun catalogPage(type: String, query: String = "", skip: Int = 0) {
-        current = { catalogPage(type, query, skip) }
+    private fun catalogPage(type: String, query: String = "", skip: Int = 0, genre: String = "") {
+        current = { catalogPage(type, query, skip, genre) }
         destination = type; refreshNavigation()
-        if (skip == 0 && query.isBlank()) catalogOffsets[type]?.clear()
-        val id = page(if (query.isBlank()) if (type == "movie") "Movies" else "TV shows" else "Results for “$query”", "Find something worth your evening.")
+        val pagingKey = "$type:$genre"
+        if (skip == 0 && query.isBlank()) catalogOffsets[pagingKey]?.clear()
+        val id = page(if (query.isBlank()) if (type == "movie") "Movies" else "TV shows" else "Results for “$query”", if(genre.isBlank() || query.isNotBlank()) "Find something worth your evening." else "$genre · Find something worth your evening.")
         val actions = horizontalRow()
         actions.addView(button("Search ${if (type == "movie") "movies" else "shows"}") { search(type) }, margin(170, 38, right = 8))
-        if (skip > 0) actions.addView(button("Previous page") { catalogPage(type, query, catalogOffsets[type]?.removeLastOrNull() ?: 0) }, margin(140, 38))
-        read(id, { if (query.isBlank()) catalog.popular(type, skip) else catalog.search(query, type) }) { items ->
+        if(query.isBlank()) actions.addView(button("Genre · ${genre.ifBlank{"All"}}") {
+            val choices=listOf("All genres")+catalog.genres(type)
+            AlertDialog.Builder(this).setTitle("Choose a genre").setSingleChoiceItems(choices.toTypedArray(), if(genre.isBlank())0 else choices.indexOf(genre)) { dialog,index ->
+                dialog.dismiss(); catalogPage(type,genre=if(index==0)""else choices[index])
+            }.setNegativeButton("Cancel",null).show()
+        },margin(180,38,right=8))
+        if (skip > 0) actions.addView(button("Previous page") { catalogPage(type, query, catalogOffsets[pagingKey]?.removeLastOrNull() ?: 0, genre) }, margin(140, 38))
+        read(id, { if (query.isBlank()) catalog.popular(type, skip, genre) else catalog.search(query, type) }) { items ->
             mediaGrid(items)
-            if (query.isBlank() && items.isNotEmpty()) body.addView(button("More titles  ›") { catalogOffsets.getOrPut(type) { ArrayDeque() }.addLast(skip); catalogPage(type, skip = skip + items.size) }, margin(180, 42, top = 20))
+            catalog.lastCacheRead?.notice?.takeIf{it.isNotBlank()}?.let{body.addView(text(it,12,muted),margin(-1,-2,top=10))}
+            if (query.isBlank() && items.isNotEmpty()) body.addView(button("More titles  ›") { catalogOffsets.getOrPut(pagingKey) { ArrayDeque() }.addLast(skip); catalogPage(type, skip = skip + items.size, genre=genre) }, margin(180, 42, top = 20))
         }
     }
 
@@ -980,6 +1072,12 @@ class MainActivity : Activity() {
     private fun mediaActions(result: MediaItemData) {
         val identity = PlaybackIdentity(result.imdbId, result.type, result.title)
         val actions = horizontalRow()
+        actions.addView(button(if(library.isWatchlisted(result)) "Remove from local watchlist" else "+ My watchlist") {
+            library.setWatchlist(result,!library.isWatchlisted(result)); details(result)
+        },margin(210,48,right=8))
+        actions.addView(button("Add to playlist") { playlistPicker(CameoLibraryEntry.catalog(result)) },margin(160,48,right=8))
+        if(result.type=="movie") actions.addView(button("Download") { navigate { showSources(identity,download=true) } },margin(140,48,right=8))
+        if(result.type=="movie"&&(trakt.connected()||mdblist.connected()||simkl.connected()))actions.addView(button("Watched status"){watchedActions(identity)},margin(155,48,right=8))
         if (result.type == "movie") actions.addView(button("Find movie sources  ▶") { navigate { showSources(identity) } }, margin(200, 44, right = 10))
         if (result.description.isNotBlank()) actions.addView(button("Synopsis") {
             AlertDialog.Builder(this).setTitle(result.title).setMessage(result.description).setPositiveButton("Close", null).show()
@@ -1051,18 +1149,22 @@ class MainActivity : Activity() {
         }.apply {
             tag = "episode:${identity.imdbId}:${identity.season}:${identity.episode}"
             contentDescription = "$number. $title. ${if (future) "Not yet released" else detail}"
-            if (trakt.connected() && !future) setOnLongClickListener {
-                confirm("Mark $number as watched?") { load(generation, { trakt.markWatched(identity) }) { toast("Episode marked watched") } }; true
+            if (!future) setOnLongClickListener {
+                AlertDialog.Builder(this@MainActivity).setTitle("$number · $title").setItems(arrayOf("Play","Download","Add to playlist","Watched status")){_,choice->when(choice){
+                    0->navigate{showSources(identity)};1->navigate{showSources(identity,download=true)}
+                    2->playlistPicker(CameoLibraryEntry.catalog(MediaItemData(identity.imdbId,identity.type,identity.title),identity))
+                    else->watchedActions(identity)
+                }}.setNegativeButton("Cancel",null).show();true
             }
         }
     }
 
-    private fun showSources(identity: PlaybackIdentity) {
-        if (playbackPreferences.providerId != "torbox") { providerSources(playbackPreferences.providerId, identity); return }
-        current = { showSources(identity) }
+    private fun showSources(identity: PlaybackIdentity, download: Boolean = false) {
+        if (playbackPreferences.providerId != "torbox") { providerSources(playbackPreferences.providerId, identity, download); return }
+        current = { showSources(identity, download) }
         val suffix = if (identity.type == "series") "  ·  S${identity.season} E${identity.episode}" else ""
-        val id = page(identity.title + suffix, "Choose a source to play through TorBox.")
-        body.addView(button("Playback service · TorBox  ›") { chooseProvider { showSources(identity) } }, margin(-1, 40, bottom = 10))
+        val id = page(identity.title + suffix, if(download) "Choose a source to download through TorBox." else "Choose a source to play through TorBox.")
+        body.addView(button("Playback service · TorBox  ›") { chooseProvider { showSources(identity, download) } }, margin(-1, 40, bottom = 10))
         if (!store.has("torbox.token")) { body.addView(button("Connect TorBox") { startTorBox() }, margin(200, 44)); return }
         val accountRevision = torbox.accountRevision()
         read(id, { resolver.sources(identity, expectedRevision = accountRevision) }) { sources ->
@@ -1072,20 +1174,21 @@ class MainActivity : Activity() {
             sources.distinctBy(TvChoiceKeys::source).take(70).forEach { source ->
                 val status = if (source.cached) "READY IN TORBOX" else if (source.directUrl.isNotEmpty()) "DIRECT STREAM" else "TRANSFER MAY BE NEEDED"
                 choices.addChoice(TvChoiceRow(this, TvChoiceKeys.source(source), source.title, source.detail,
-                    "$status   ·   ${source.provider}", theme.palette) {
-                    if (!source.cached && source.directUrl.isEmpty()) confirm("Add this source to your TorBox account? A transfer may need time to finish.") { resolve(source, identity, accountRevision) }
-                    else resolve(source, identity, accountRevision)
+                    "$status   ·   ${source.provider}", activePalette) {
+                    if (!source.cached && source.directUrl.isEmpty()) confirm("Add this source to your TorBox account? A transfer may need time to finish.") { resolve(source, identity, accountRevision, download) }
+                    else resolve(source, identity, accountRevision, download)
                 })
             }
+            addQualityFilter(choices,sources.distinctBy(TvChoiceKeys::source).take(70))
         }
     }
 
-    private fun providerSources(providerId: String, identity: PlaybackIdentity) {
-        current = { providerSources(providerId, identity) }
+    private fun providerSources(providerId: String, identity: PlaybackIdentity, download: Boolean = false) {
+        current = { providerSources(providerId, identity, download) }
         val spec = ProviderHub.SPECS.first { it.id == providerId }
         val id = page(identity.title + if (identity.type == "series") " · S${identity.season} E${identity.episode}" else "",
             "Choose a source to play through ${spec.label}.")
-        body.addView(button("Playback service · ${spec.label}  ›") { chooseProvider { showSources(identity) } }, margin(-1, 40, bottom = 10))
+        body.addView(button("Playback service · ${spec.label}  ›") { chooseProvider { showSources(identity, download) } }, margin(-1, 40, bottom = 10))
         if (!providers.connected(providerId)) {
             body.addView(button("Connect ${spec.label}") { navigate { providerSettings(providerId) } }, margin(240, 44)); return
         }
@@ -1093,7 +1196,7 @@ class MainActivity : Activity() {
         if (providerId == "easynews") {
             read(id, { providers.searchEasynews(identity, expectedRevision = revision) }) { files ->
                 if (revision != providers.accountRevision(providerId)) return@read
-                providerFileRows(providerId, files, identity, accountRevision = revision)
+                providerFileRows(providerId, files, identity, accountRevision = revision, download = download)
             }
         } else read(id, { resolver.sourcesUncached(identity) }) { sources ->
             if (revision != providers.accountRevision(providerId)) return@read
@@ -1101,15 +1204,16 @@ class MainActivity : Activity() {
             if (sources.isEmpty()) body.addView(text("No sources are available. Try another service or source provider.", 14, muted))
             sources.distinctBy(TvChoiceKeys::source).take(70).forEach { source ->
                 choices.addChoice(TvChoiceRow(this, "${providerId}:${TvChoiceKeys.source(source)}", source.title, source.detail,
-                    if (source.directUrl.isNotBlank()) "DIRECT STREAM" else "${spec.label} · availability checked after selection", theme.palette) {
-                    val prepare = { prepareProviderSource(providerId, source, identity, revision) }
+                    if (source.directUrl.isNotBlank()) "DIRECT STREAM" else "${spec.label} · availability checked after selection", activePalette) {
+                    val prepare = { prepareProviderSource(providerId, source, identity, revision, download) }
                     if (source.directUrl.isNotBlank()) prepare() else confirm("Prepare this source in your ${spec.label} account? A transfer may be created.", prepare)
                 })
             }
+            addQualityFilter(choices,sources.distinctBy(TvChoiceKeys::source).take(70))
         }
     }
 
-    private fun prepareProviderSource(providerId: String, source: SourceItem, identity: PlaybackIdentity, revision: String) {
+    private fun prepareProviderSource(providerId: String, source: SourceItem, identity: PlaybackIdentity, revision: String, download: Boolean = false) {
         if (resolvingGeneration == generation || launchingPlayer) return
         val request = generation; resolvingGeneration = request
         load(request, {
@@ -1119,44 +1223,44 @@ class MainActivity : Activity() {
             resolvingGeneration = null
             if (revision != providers.accountRevision(providerId)) { toast("The provider account changed. Choose a source again."); return@load }
             when {
-                prepared.playback != null -> playProvider(prepared.playback, identity.title, identity, mediaKey(identity))
-                prepared.automaticFile != null -> playProviderFile(providerId, prepared.automaticFile!!, identity, revision)
+                prepared.playback != null -> playProvider(prepared.playback, identity.title, identity, mediaKey(identity), download)
+                prepared.automaticFile != null -> playProviderFile(providerId, prepared.automaticFile!!, identity, revision, download)
                 else -> navigate {
-                    current = { providerVersions(providerId, prepared.files, identity, prepared.preferredFileId, revision) }
-                    providerVersions(providerId, prepared.files, identity, prepared.preferredFileId, revision)
+                    current = { providerVersions(providerId, prepared.files, identity, prepared.preferredFileId, revision, download) }
+                    providerVersions(providerId, prepared.files, identity, prepared.preferredFileId, revision, download)
                 }
             }
         }
     }
 
-    private fun mediaKey(identity: PlaybackIdentity) = "media:${identity.imdbId}:${identity.season}:${identity.episode}"
+    private fun mediaKey(identity: PlaybackIdentity) = "media:${if(identity.catalogNamespace.isBlank())"" else identity.catalogNamespace+":"}${identity.imdbId}:${identity.season}:${identity.episode}"
 
-    private fun providerVersions(providerId: String, files: List<ProviderFile>, identity: PlaybackIdentity, preferred: String?, accountRevision: String) {
-        current = { providerVersions(providerId, files, identity, preferred, accountRevision) }
+    private fun providerVersions(providerId: String, files: List<ProviderFile>, identity: PlaybackIdentity, preferred: String?, accountRevision: String, download: Boolean = false) {
+        current = { providerVersions(providerId, files, identity, preferred, accountRevision, download) }
         val id = page("Choose a video version", "Each row plays that exact file through ${ProviderHub.SPECS.first { it.id == providerId }.label}.")
         if (accountRevision != providers.accountRevision(providerId)) {
             body.addView(text("The provider account changed. Go back and choose a new source.", 14, muted)); return
         }
-        providerFileRows(providerId, files, identity, accountRevision)
+        providerFileRows(providerId, files, identity, accountRevision, download)
         if (pendingFocus == null && preferred != null) pendingFocus = TvFocusSnapshot("provider-file:$providerId:$preferred", 0)
         focusAfterRender(id)
     }
 
     private fun providerFileRows(providerId: String, files: List<ProviderFile>, identity: PlaybackIdentity? = null,
-        accountRevision: String = providers.accountRevision(providerId)) {
+        accountRevision: String = providers.accountRevision(providerId), download: Boolean = false) {
         val choices = TvChoiceList(this); body.addView(choices, margin(-1, -2))
         if (files.isEmpty()) body.addView(text("No playable video files are available yet.", 14, muted))
         files.forEach { file ->
             choices.addChoice(TvChoiceRow(this, "provider-file:$providerId:${file.id}", file.name,
                 if (file.size > 0) String.format(java.util.Locale.getDefault(), "%.2f GB", file.size / 1_000_000_000.0) else "Video file",
-                palette = theme.palette) {
-                if (accountRevision == providers.accountRevision(providerId)) playProviderFile(providerId, file, identity, accountRevision)
+                palette = activePalette) {
+                if (accountRevision == providers.accountRevision(providerId)) playProviderFile(providerId, file, identity, accountRevision, download)
                 else toast("The provider account changed. Reopen this folder or source.")
             })
         }
     }
 
-    private fun playProviderFile(providerId: String, file: ProviderFile, identity: PlaybackIdentity?, revision: String) {
+    private fun playProviderFile(providerId: String, file: ProviderFile, identity: PlaybackIdentity?, revision: String, download: Boolean = false) {
         if (launchingPlayer || resolvingGeneration == generation) { toast("Preparing your selected file…"); return }
         val request = generation; resolvingGeneration = request
         read(request, {
@@ -1165,12 +1269,12 @@ class MainActivity : Activity() {
         }) { playback ->
             resolvingGeneration = null
             if (revision == providers.accountRevision(providerId)) playProvider(playback, identity?.title ?: file.name, identity,
-                identity?.let(::mediaKey) ?: providerFileKey(providerId, file))
+                identity?.let(::mediaKey) ?: providerFileKey(providerId, file), download)
         }
     }
 
-    private fun playProvider(playback: ProviderPlayback, title: String, identity: PlaybackIdentity?, key: String) {
-        play(playback.url, title, identity, key, playback.headers)
+    private fun playProvider(playback: ProviderPlayback, title: String, identity: PlaybackIdentity?, key: String, download: Boolean = false) {
+        play(playback.url, title, identity, key, playback.headers, download)
     }
 
     /** Provider IDs can themselves be protected links; persist only an opaque local lookup key. */
@@ -1197,7 +1301,7 @@ class MainActivity : Activity() {
             val choices = TvChoiceList(this); body.addView(choices, margin(-1, -2))
             if (folders.isEmpty()) body.addView(text("Your ${spec.label} library is empty.", 14, muted))
             folders.forEach { folder -> choices.addChoice(TvChoiceRow(this, "provider-folder:$providerId:${folder.id}", folder.name,
-                if (folder.directory) "Folder" else if (folder.ready) "Ready to browse" else "Processing · open to check files", palette = theme.palette) {
+                if (folder.directory) "Folder" else if (folder.ready) "Ready to browse" else "Processing · open to check files", palette = activePalette) {
                 navigate {
                     if (folder.directory) providerCloud(providerId, folder.id, revision) else {
                         current = { providerCloudFiles(providerId, folder, revision) }; providerCloudFiles(providerId, folder, revision)
@@ -1230,7 +1334,7 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
     }
 
-    private fun resolve(source: SourceItem, identity: PlaybackIdentity, accountRevision: String) {
+    private fun resolve(source: SourceItem, identity: PlaybackIdentity, accountRevision: String, download: Boolean = false) {
         if (accountRevision != torbox.accountRevision()) { toast("The TorBox account changed. Reopen the source list."); return }
         if (resolvingGeneration == generation || launchingPlayer) { toast("Preparing the selected source…"); return }
         val request = generation; resolvingGeneration = request
@@ -1244,12 +1348,12 @@ class MainActivity : Activity() {
                         if (accountRevision != torbox.accountRevision()) { toast("The TorBox account changed. Choose a source again."); return@runOnUiThread }
                         when (prepared) {
                             is PreparedSource.Direct -> play(prepared.url, prepared.identity.title, prepared.identity,
-                                "media:${prepared.identity.imdbId}:${prepared.identity.season}:${prepared.identity.episode}")
+                                "media:${prepared.identity.imdbId}:${prepared.identity.season}:${prepared.identity.episode}", source.requestHeaders, download)
                             is PreparedSource.Files -> {
                                 torboxFolderRevisions[prepared.folder] = accountRevision
                                 val only = prepared.automaticFile
-                                if (only != null) playPreparedFile(prepared, only)
-                                else navigate { preparedFiles(prepared) }
+                                if (only != null) playPreparedFile(prepared, only, download)
+                                else navigate { preparedFiles(prepared, download) }
                             }
                         }
                     }
@@ -1260,8 +1364,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun preparedFiles(prepared: PreparedSource.Files) {
-        current = { preparedFiles(prepared) }
+    private fun preparedFiles(prepared: PreparedSource.Files, download: Boolean = false) {
+        current = { preparedFiles(prepared, download) }
         val identity = prepared.identity
         val suffix = if (identity.type == "series") " · S${identity.season} E${identity.episode}" else ""
         val id = page("Choose a video version", "Choose the correct file for ${identity.title}$suffix. Each row plays that exact file.")
@@ -1271,7 +1375,7 @@ class MainActivity : Activity() {
         val choices = TvChoiceList(this); body.addView(choices, margin(-1, -2))
         prepared.files.forEach { file ->
             choices.addChoice(TvChoiceRow(this, TvChoiceKeys.file(prepared.folder.kind, prepared.folder.id, file.id),
-                file.name, fileSize(file), palette = theme.palette) { playPreparedFile(prepared, file) })
+                file.name, fileSize(file), palette = activePalette) { playPreparedFile(prepared, file, download) })
         }
         if (prepared.files.isEmpty()) body.addView(text("No eligible video files are available. Go back and choose another source.", 15, muted))
         if (pendingFocus == null) prepared.preferredFileId?.let { fileId ->
@@ -1280,10 +1384,10 @@ class MainActivity : Activity() {
         focusAfterRender(id)
     }
 
-    private fun playPreparedFile(prepared: PreparedSource.Files, file: CloudFile) {
+    private fun playPreparedFile(prepared: PreparedSource.Files, file: CloudFile, download: Boolean = false) {
         val identity = prepared.identity
         streamFile(prepared.folder, file, identity.title, identity,
-            "media:${identity.imdbId}:${identity.season}:${identity.episode}")
+            "media:${identity.imdbId}:${identity.season}:${identity.episode}", download)
     }
 
     private fun cloud(kind: String) {
@@ -1304,7 +1408,7 @@ class MainActivity : Activity() {
             folders.forEach { folder ->
                 torboxFolderRevisions[folder] = accountRevision
                 choices.addChoice(TvChoiceRow(this, TvChoiceKeys.folder(folder.kind, folder.id),
-                folder.name, if (folder.ready) "Ready to browse" else "Not ready yet", palette = theme.palette) {
+                folder.name, if (folder.ready) "Ready to browse" else "Not ready yet", palette = activePalette) {
                 navigate { cloudFolder(folder) }
             }) }
         }
@@ -1324,7 +1428,7 @@ class MainActivity : Activity() {
             if (files.isEmpty()) body.addView(text("No playable video files are available yet.", 15, muted))
             val choices = TvChoiceList(this); body.addView(choices, margin(-1, -2))
             files.forEach { file -> choices.addChoice(TvChoiceRow(this, TvChoiceKeys.file(result.kind, result.id, file.id),
-                file.name, fileSize(file), palette = theme.palette) { cloudChoice(result, file) }) }
+                file.name, fileSize(file), palette = activePalette) { cloudChoice(result, file) }) }
         }
     }
 
@@ -1345,7 +1449,7 @@ class MainActivity : Activity() {
                 val source = SourceItem("Version ${index + 1} · Example Movie 2026 extended edition with a deliberately long title to verify every row remains independently selectable",
                     "Public fixture", infoHash = String.format(java.util.Locale.ROOT, "%040x", index + 1), fileIndex = index, cached = true)
                 choices.addChoice(TvChoiceRow(this, TvChoiceKeys.source(source), source.title,
-                    "$resolution · synthetic file · no network", "READY IN TORBOX · Public fixture", theme.palette) {
+                    "$resolution · synthetic file · no network", "READY IN TORBOX · Public fixture", activePalette) {
                     navigate { sourceChoiceAuditFiles(index + 1) }
                 })
             }
@@ -1361,7 +1465,7 @@ class MainActivity : Activity() {
         val choices = TvChoiceList(this); body.addView(choices, margin(-1, -2))
         repeat(7) { index ->
             choices.addChoice(TvChoiceRow(this, TvChoiceKeys.file("torrents", 1234, 101L + index),
-                "File version ${index + 1} · Example Movie with a long synthetic filename.1080p.mkv", "${index + 1}.00 GB", palette = theme.palette) {
+                "File version ${index + 1} · Example Movie with a long synthetic filename.1080p.mkv", "${index + 1}.00 GB", palette = activePalette) {
                 selection.text = "Selected file version ${index + 1}"
             })
         }
@@ -1417,7 +1521,7 @@ class MainActivity : Activity() {
         streamFile(folder, file, file.name, identity, "cloud:${folder.kind}:${folder.id}:${file.id}:${Net.encode(revision)}")
     }
 
-    private fun streamFile(folder: CloudFolder, file: CloudFile, title: String, identity: PlaybackIdentity?, key: String) {
+    private fun streamFile(folder: CloudFolder, file: CloudFile, title: String, identity: PlaybackIdentity?, key: String, download: Boolean = false) {
         if (resolvingGeneration == generation || launchingPlayer) { toast("Preparing the selected file…"); return }
         val request = generation; resolvingGeneration = request
         val accountRevision = torboxFolderRevisions[folder]
@@ -1431,7 +1535,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     if (request == generation && !isFinishing && !isDestroyed) {
                         resolvingGeneration = null; body.removeView(progress)
-                        if (accountRevision == torbox.accountRevision()) play(url, title, identity, key)
+                        if (accountRevision == torbox.accountRevision()) play(url, title, identity, key, download = download)
                     }
                 }
             } catch (error: Exception) { runOnUiThread {
@@ -1442,15 +1546,17 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun play(url: String, title: String, identity: PlaybackIdentity?, key: String, headers: Map<String, String> = emptyMap()) {
+    private fun play(url: String, title: String, identity: PlaybackIdentity?, key: String, headers: Map<String, String> = emptyMap(), download: Boolean = false) {
         if (launchingPlayer) return
-        if (Uri.parse(url).scheme != "https") { toast("This stream did not return a secure playback link."); return }
+        if (!MediaAddressPolicy.accepts(url)) { toast("This source did not return a supported secure or local playback address."); return }
+        if(download) { requestDownload(url,title,headers); return }
+        if(!CameoPlaybackQueue.acceptsPlay(key,identity))CameoPlaybackQueue.clear()
         launchingPlayer = true
         val remotePercent = identity?.let { remoteProgress[identityKey(it)] } ?: 0.0
         fun launch(resume: Boolean) {
             try {
                 history.beginPlayback(key, identity)
-                val intent = Intent(this, PlayerActivity::class.java).putExtra("url", url).putExtra("title", title)
+                val intent = Intent(this, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra("url", url).putExtra("title", title)
                     .putExtra("playback_request", if (headers.isEmpty()) "" else InAppPlaybackSession.prepareRequest(url, headers))
                     .putExtra("identity", identity?.toJson()?.toString()).putExtra("key", key)
                 if (resume) intent.putExtra("resume", history.resume(key)).putExtra("resume_percent", remotePercent)
@@ -1516,7 +1622,16 @@ class MainActivity : Activity() {
     private fun settings() {
         current = { settings() }
         destination = "settings"; refreshNavigation()
-        page("Settings", "Make POV yours.")
+        page("Settings", "Make Cameo yours.")
+        body.addView(button("Connections · all services") { navigate { connectionsPage() } },margin(-1,48,bottom=8))
+        body.addView(button("My library, playlists and downloads") { navigate { libraryPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Add-ons") { navigate { addonPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Application icon") { iconPicker() },margin(-1,48,bottom=8))
+        body.addView(button("Troubleshooting report") { exportDiagnostics() },margin(-1,48,bottom=8))
+        body.addView(button("Playback reporting queue") { navigate{reportingQueue()} },margin(-1,48,bottom=8))
+        body.addView(button("Offline catalog cache") { val info=catalog.cacheInfo();AlertDialog.Builder(this).setTitle("Public metadata cache")
+            .setMessage("${info.entries} entries · ${info.bytes/1_000_000} MB. Only public title metadata is cached; streams and accounts are excluded.")
+            .setPositiveButton("Clear cache"){_,_->catalog.clearCache();toast("Public metadata cache cleared")}.setNegativeButton("Close",null).show() },margin(-1,48,bottom=8))
         section("Appearance")
         body.addView(button("Themes · ${theme.displayName}  ›") { navigate { appearance() } }, margin(-1, 46, bottom = 9))
         section("Playback")
@@ -1549,7 +1664,7 @@ class MainActivity : Activity() {
             val uri = Uri.parse(value.trim()); if (uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null) { store.put("sources.endpoint", value.trim()); toast("Source provider saved") } else toast("Enter a valid HTTPS address")
         } }, margin(-1, 44, bottom = 8))
         section("About")
-        body.addView(text("POV Standalone · ${BuildConfig.VERSION_NAME}\nStandalone app made by Mark Mateo.\nBased on the original POV Kodi add-on by kodifitzwell.\nOriginal project: github.com/kodifitzwell/repo\nLicensed under GNU GPL version 3.\nCatalogs: Cinemeta and Kitsu. Playback: AndroidX Media3 and VideoLAN LibVLC.", 13, muted), margin(-1, -2, bottom = 12))
+        body.addView(text("Cameo · ${BuildConfig.VERSION_NAME}\nStandalone app made by Mark Mateo.\nBased on the original POV Kodi add-on by kodifitzwell.\nOriginal project: github.com/kodifitzwell/repo\nLicensed under GNU GPL version 3.\nCatalogs: Cinemeta and Kitsu. Playback: AndroidX Media3 and VideoLAN LibVLC.", 13, muted), margin(-1, -2, bottom = 12))
         body.addView(button("Open-source notices") { AlertDialog.Builder(this).setTitle("Open-source notices").setMessage(assets.open("NOTICE.txt").bufferedReader().use { it.readText() }).setPositiveButton("Close", null).show() }, margin(230, 42))
     }
 
@@ -1601,7 +1716,7 @@ class MainActivity : Activity() {
         page("Playback accounts", "Choose your service. Accounts stay separate; selecting one does not disconnect another.")
         ProviderHub.SPECS.forEach { spec ->
             body.addView(button("${spec.label} · ${if (providers.connected(spec.id)) "connected" else "not linked"}${if (spec.experimental) " · experimental" else ""}  ›") {
-                if (spec.id == "torbox") navigate { settings() } else navigate { providerSettings(spec.id) }
+                navigate { providerSettings(spec.id) }
             }, margin(-1, 44, bottom = 8))
         }
     }
@@ -1610,6 +1725,8 @@ class MainActivity : Activity() {
         current = { providerSettings(providerId) }
         val spec = ProviderHub.SPECS.first { it.id == providerId }
         page(spec.label, "Use your own ${spec.label} account. ${spec.credentialLabel} setup: ${spec.credentialUrl}")
+        body.addView(button("Saved accounts · add or switch"){navigate{providerProfiles(providerId)}},margin(-1,48,bottom=10))
+        if(providerId=="torbox") body.addView(button("Connect TorBox with an activation code"){startTorBox()},margin(-1,48,bottom=8))
         if (spec.experimental) body.addView(text("Easynews uses its member search service. Provider behavior may change; protected playback uses Media3.", 13, muted), margin(-1, -2, bottom = 10))
         body.addView(button("${if (providers.connected(providerId)) "Reconnect" else "Connect"} ${spec.label}") {
             val connect: (String) -> Unit = { username ->
@@ -1709,7 +1826,7 @@ class MainActivity : Activity() {
 
     private fun simklPage() {
         current = { simklPage() }; destination = "library"; refreshNavigation()
-        val id = page("My Simkl", "Your movie/show watchlists and saved playback. Continue Watching removal stays local to POV.")
+        val id = page("My Simkl", "Your movie/show watchlists and saved playback. Continue Watching removal stays local to Cameo.")
         if (!simkl.connected()) { body.addView(button("Connect Simkl") { navigate { simklSettings() } }, margin(-1, 44)); return }
         val revision = simkl.accountRevision()
         read(id, {
@@ -1758,7 +1875,7 @@ class MainActivity : Activity() {
         body.addView(button("$label playback tracking · ${if (enabled) "On" else "Off"}") {
             if (enabled) { AdditionalTracking.setEnabled(this, providerId, false); current() }
             else AlertDialog.Builder(this).setTitle("Enable $label playback tracking?")
-                .setMessage("POV will send identified movie/episode IDs, playback percentage, and play/pause/stop events to your connected $label account. This can update its viewing history and resume progress. Trakt is independent. You can turn this off at any time.")
+                .setMessage("Cameo will send identified movie/episode IDs, playback percentage, and play/pause/stop events to your connected $label account. This can update its viewing history and resume progress. Trakt is independent. You can turn this off at any time.")
                 .setPositiveButton("Enable tracking") { _, _ -> AdditionalTracking.setEnabled(this, providerId, true); current() }
                 .setNegativeButton("Cancel", null).show()
         }, margin(-1, 44, bottom = 8))
@@ -1855,6 +1972,7 @@ class MainActivity : Activity() {
         body.addView(button("Try again") { current() }, margin(150, 40, bottom = 12))
     }
     private fun cardWidth(): Int {
+        if(mobileMode) return ((resources.displayMetrics.widthPixels/resources.displayMetrics.density-44)/2).toInt().coerceAtLeast(120)
         val visible = when (theme) { ThemeSpec.CINEMATIC -> 4; ThemeSpec.DASHBOARD -> 3; else -> 5 }
         val available = 960 - theme.layout.railWidthDp - theme.layout.contentInsetDp * 2 - 13
         return minOf(theme.layout.cardWidthDp, (available - (visible - 1) * theme.layout.cardGapDp) / visible)
@@ -1866,15 +1984,15 @@ class MainActivity : Activity() {
     private fun mediaRow(title: String, items: List<MediaItemData>) {
         if (items.isEmpty()) return
         section(title); val row = horizontalRow()
-        items.take(20).forEach { row.addView(card(it).apply { tag = "row:$title:${it.type}:${it.imdbId}" }, margin(cardWidth(), theme.layout.cardHeightDp, right = theme.layout.cardGapDp)) }
+        items.take(20).forEach { row.addView(card(it).apply { tag = "row:$title:${it.type}:${it.imdbId}" }, margin(cardWidth(), if(mobileMode)215 else theme.layout.cardHeightDp, right = theme.layout.cardGapDp)) }
     }
     private fun mediaGrid(items: List<MediaItemData>) {
         if (items.isEmpty()) { body.addView(text("No titles found. Try a different search.", 14, muted)); return }
         val width = 960 - theme.layout.railWidthDp - theme.layout.contentInsetDp * 2
-        val count = (width / (cardWidth() + theme.layout.cardGapDp)).coerceAtLeast(1)
+        val count = if(mobileMode)2 else (width / (cardWidth() + theme.layout.cardGapDp)).coerceAtLeast(1)
         items.chunked(count).forEach { chunk ->
             val row = LinearLayout(this); body.addView(row, margin(-1, -2, top = 14))
-            chunk.forEach { row.addView(card(it), margin(cardWidth(), theme.layout.cardHeightDp, right = theme.layout.cardGapDp)) }
+            chunk.forEach { row.addView(card(it), margin(cardWidth(), if(mobileMode)215 else theme.layout.cardHeightDp, right = theme.layout.cardGapDp)) }
         }
     }
     private fun card(item: MediaItemData): View = tile(item) { navigate { details(item) } }
@@ -1882,7 +2000,7 @@ class MainActivity : Activity() {
     private fun tile(item: MediaItemData, progress: Double? = null, caption: String = "", action: () -> Unit): View {
         val shape = theme.layout.cards
         val frame = FrameLayout(this).apply {
-            background = rounded(panel, theme.layout.cornerRadiusDp); isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+            background = rounded(panel, theme.layout.cornerRadiusDp); isFocusable = true; isFocusableInTouchMode = !mobileMode; isClickable = true
             contentDescription = listOf(item.title, item.year, caption).filter(String::isNotBlank).joinToString(", ")
             tag = "media:${item.type}:${item.imdbId.ifBlank { item.title }}"
         }
@@ -1901,7 +2019,7 @@ class MainActivity : Activity() {
         frame.addView(artFrame, FrameLayout.LayoutParams(-1, -1))
         if (progress != null) {
             val track = FrameLayout(this).apply { background = rounded(0xFF34424D.toInt(), 3) }
-            track.addView(View(this).apply { background = rounded(theme.palette.progress, 3) }, FrameLayout.LayoutParams(0, -1))
+            track.addView(View(this).apply { background = rounded(activePalette.progress, 3) }, FrameLayout.LayoutParams(0, -1))
             frame.addView(track, FrameLayout.LayoutParams(-1, dp(4), Gravity.BOTTOM).apply { leftMargin = dp(9); rightMargin = dp(9); bottomMargin = dp(6) })
             track.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 val targetWidth = (track.width * progress.coerceIn(0.0, 1.0)).roundToInt()
@@ -1909,9 +2027,9 @@ class MainActivity : Activity() {
                 if (fill.layoutParams.width != targetWidth) fill.layoutParams = fill.layoutParams.apply { width = targetWidth }
             }
         }
-        frame.foreground = FocusRingDrawable(theme.palette.border, dp(theme.layout.cornerRadiusDp).toFloat(), false, dp(1).toFloat())
+        frame.foreground = FocusRingDrawable(activePalette.border, dp(theme.layout.cornerRadiusDp).toFloat(), false, dp(1).toFloat())
         frame.setOnFocusChangeListener { view, focused ->
-            view.foreground = FocusRingDrawable(if (focused) accent else theme.palette.border, dp(theme.layout.cornerRadiusDp).toFloat(), focused, dp(1).toFloat())
+            view.foreground = FocusRingDrawable(if (focused) accent else activePalette.border, dp(theme.layout.cornerRadiusDp).toFloat(), focused, dp(1).toFloat())
             view.animate().scaleX(if (focused) theme.layout.focusScale else 1f).scaleY(if (focused) theme.layout.focusScale else 1f).setDuration(130).start()
         }
         frame.setOnClickListener { action() }
@@ -1938,29 +2056,396 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply { setPadding(dp(3), dp(4), dp(10), dp(4)); clipChildren = false; clipToPadding = false }
         scroller.addView(row); body.addView(scroller, margin(-1, -2)); return row
     }
+    private fun libraryPage() {
+        current = { libraryPage() }; destination="library";refreshNavigation()
+        page("My Library", "Local videos, watchlist, playlists, connected services and downloads.")
+        body.addView(button("Open video files") { openLocalFiles() },margin(-1,48,bottom=8))
+        body.addView(button("Import a folder") { openLocalFolder() },margin(-1,48,bottom=8))
+        body.addView(button("Open stream address") { openStream() },margin(-1,48,bottom=8))
+        body.addView(button("Saved playlists") { navigate { playlistsPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Downloads") { navigate { downloadsPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Import an Easynews NZB") { importNzb() },margin(-1,48,bottom=8))
+        body.addView(button("My services") { navigate { myServicesPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Connections") { navigate { connectionsPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Add-on catalogs") { navigate { addonPage() } },margin(-1,48,bottom=8))
+        body.addView(button("Trakt lists and Up Next") { navigate { traktPage() } },margin(-1,48,bottom=8))
+        listConnectionsRow()
+        val saved=library.watchlist().filter{it.identity?.catalogNamespace.isNullOrBlank()}.mapNotNull { it.media };if(saved.isNotEmpty())mediaRow("My watchlist",saved)
+        library.watchlist().filter{!it.identity?.catalogNamespace.isNullOrBlank()}.forEach{entry->body.addView(button(entry.name){playLibraryEntry(entry)},margin(-1,48,bottom=8))}
+        val local=library.local()
+        section("Local videos")
+        if(local.isEmpty())body.addView(text("Choose files or a folder. Storage, USB and available network document providers are supported.",14,muted))
+        local.forEach { entry -> body.addView(button(entry.name) { localEntryOptions(entry) }.apply { tag="library:${entry.id}" },margin(-1,52,bottom=8)) }
+        val recent=history.continueWatching();if(recent.isNotEmpty())resumeRow(recent)
+    }
+
+    private fun connectionsPage() {current={connectionsPage()};destination="settings";refreshNavigation();serviceScreens().connections()}
+    private fun myServicesPage() {current={myServicesPage()};destination="library";refreshNavigation();serviceScreens().myServices()}
+    private fun addonPage() {current={addonPage()};destination="library";refreshNavigation();serviceScreens().addons()}
+    private fun serviceScreens()=CameoServiceScreens(object:CameoServiceScreens.Host {
+        override val context:android.content.Context get()=this@MainActivity
+        override fun page(title:String,subtitle:String):LinearLayout {this@MainActivity.page(title,subtitle);return body}
+        override fun navigate(screen:()->Unit)=this@MainActivity.navigate(screen)
+        override fun <T> load(work:()->T,done:(T)->Unit)=this@MainActivity.load(generation,work,done=done)
+        override fun text(body:LinearLayout,message:String,size:Int){body.addView(this@MainActivity.text(message,size,muted),margin(-1,-2,top=8,bottom=12))}
+        override fun button(body:LinearLayout,label:String,action:()->Unit){body.addView(this@MainActivity.button(label,action),margin(-1,-2,bottom=10))}
+        override fun input(body:LinearLayout,label:String,value:String,secret:Boolean):EditText {
+            body.addView(this@MainActivity.text(label,14,ink,true),margin(-1,-2,top=9,bottom=5))
+            return EditText(this@MainActivity).apply {setText(value);hint=label;setTextColor(ink);setHintTextColor(muted);setSingleLine(true)
+                inputType=if(secret)InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT
+                minHeight=dp(48);body.addView(this,margin(-1,52,bottom=10))}
+        }
+        override fun prepareSource(source:SourceItem,identity:PlaybackIdentity,download:Boolean)=prepareAddonSource(source,identity,download)
+        override fun play(playback:ProviderPlayback,title:String,identity:PlaybackIdentity?,key:String,download:Boolean)=this@MainActivity.play(playback.url,title,identity,key,playback.headers,download)
+        override fun playlist(connectionId:String,entry:DesktopMediaEntry) {playlistPicker(CameoLibraryEntry("server:$connectionId:${entry.id}:${entry.mediaSourceId}",entry.name,"server",
+            media=entry.media,providerId=connectionId,folderId=entry.remotePath,fileId=entry.id,accountRevision=entry.accountRevision.ifBlank{desktopServices.accountRevision(connectionId)},remoteSourceId=entry.mediaSourceId))}
+        override fun playlist(entry:CameoLibraryEntry)=playlistPicker(entry)
+        override fun isWatchlisted(entry:CameoLibraryEntry)=library.watchlist().any{it.id==entry.id}
+        override fun watchlist(entry:CameoLibraryEntry,added:Boolean){library.setWatchlist(entry,added);toast(if(added)"Added to your watchlist" else "Removed from your watchlist")}
+        override fun subtitle(url:String,language:String,name:String){read(generation,{runCatching{CameoAddonSubtitles.fetch(this@MainActivity,url,language,name)}}){result->
+            result.onSuccess{offerAddonSubtitle(it,language)}.onFailure{failure->
+                if(failure is AddonSubtitleChoiceRequired)AlertDialog.Builder(this@MainActivity).setTitle("Choose the exact subtitle file")
+                    .setItems(failure.candidates.toTypedArray()){_,index->read(generation,{CameoAddonSubtitles.fetchSelected(this@MainActivity,failure.requestToken,failure.candidates[index])}){offerAddonSubtitle(it,language)}}
+                    .setNegativeButton("Cancel",null).show()
+                else showError(failure as? Exception?:Exception("The subtitle could not be opened."))
+            }
+        }}
+        override fun existingConnections(body:LinearLayout){
+            section("Playback services")
+            ProviderHub.SPECS.forEach{spec->body.addView(this@MainActivity.button("${spec.label} · ${if(providers.connected(spec.id))"connected" else "not linked"}"){
+                navigate{providerSettings(spec.id)}
+            },margin(-1,48,bottom=8))}
+            section("Tracking")
+            body.addView(this@MainActivity.button("Trakt · ${if(trakt.connected())"connected" else "not linked"}"){if(trakt.connected())navigate{traktPage()}else startTrakt()},margin(-1,48,bottom=8))
+            body.addView(this@MainActivity.button("MDBList · ${if(mdblist.connected())"connected" else "not linked"}"){navigate{mdbSettings()}},margin(-1,48,bottom=8))
+            body.addView(this@MainActivity.button("Simkl · ${if(simkl.connected())"connected" else "not linked"}"){navigate{simklSettings()}},margin(-1,48,bottom=8))
+            section("Subtitles")
+            SubtitleProvider.entries.forEach{provider->body.addView(this@MainActivity.button(provider.label){navigate{subtitleSettings()}},margin(-1,48,bottom=8))}
+        }
+        override fun existingServices(body:LinearLayout){
+            ProviderHub.SPECS.filter{it.cloud&&providers.connected(it.id)}.forEach{spec->body.addView(this@MainActivity.button(spec.label){navigate{providerCloud(spec.id)}},margin(-1,48,bottom=8))}
+            if(trakt.connected())body.addView(this@MainActivity.button("Trakt lists and Up Next"){navigate{traktPage()}},margin(-1,48,bottom=8))
+            if(mdblist.connected())body.addView(this@MainActivity.button("MDBList lists"){navigate{mdbPage()}},margin(-1,48,bottom=8))
+            if(simkl.connected())body.addView(this@MainActivity.button("Simkl lists"){navigate{simklPage()}},margin(-1,48,bottom=8))
+        }
+        override fun notice(message:String)=toast(message)
+        override fun error(error:Throwable)=showError(error as? Exception?:Exception("This action could not complete."))
+    },desktopServices,addons)
+
+    private fun prepareAddonSource(source:SourceItem,identity:PlaybackIdentity,download:Boolean=false) {
+        if(source.directUrl.isNotBlank()) {play(source.directUrl,identity.title,identity,"addon:${identity.catalogNamespace}:${identity.type}:${source.resourceId}",source.requestHeaders,download);return}
+        if(!identity.imdbId.matches(Regex("tt[0-9]+"))&&identity.type=="series"&&identity.episode<=0){toast("Choose the exact episode before selecting a source");return}
+        val provider=playbackPreferences.providerId
+        val prepare={if(provider=="torbox")resolve(source,identity,torbox.accountRevision(),download)else prepareProviderSource(provider,source,identity,providers.accountRevision(provider),download)}
+        confirm("Prepare this selected source using ${ProviderHub.SPECS.first{it.id==provider}.label}? A transfer may be created.",prepare)
+    }
+
+    private fun mobileAppearance() {
+        current={mobileAppearance()};destination="settings";page("Appearance","Choose a mobile theme. Tap a preview to apply it.")
+        MobileThemePickerRenderer(this).render(body,MobileCameoTheme.from(theme)) { choice->
+            getSharedPreferences("cameo_mobile_appearance",MODE_PRIVATE).edit().putString("theme",choice.name).apply()
+            theme=choice.foundation;destination="home";backStack.clear();current={home()};shell();home()
+        }
+        focusAfterRender(generation)
+    }
+    private fun iconPicker() {
+        val icons=CameoIcons(this);val choices=CameoIcons.OPTIONS
+        AlertDialog.Builder(this).setTitle("Application icon").setSingleChoiceItems(choices.map{it.second}.toTypedArray(),choices.indexOfFirst{it.first==icons.selected()}){dialog,index->
+            runCatching{icons.select(choices[index].first)}.onSuccess{toast("Icon updated. Your launcher may take a moment to refresh.")}.onFailure{toast("This launcher could not update the icon.")};dialog.dismiss()
+        }.setNegativeButton("Cancel",null).show()
+    }
+    private fun applyMobileSystemBars() {
+        window.statusBarColor=bg;window.navigationBarColor=bg
+        val light=if(MobileCameoTheme.from(theme)==MobileCameoTheme.PEARL)
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
+        // The mobile root owns bar padding. Do not let Decor consume it after a display switch.
+        if(android.os.Build.VERSION.SDK_INT>=30) {
+            window.decorView.systemUiVisibility=light
+            window.setDecorFitsSystemWindows(false)
+        } else window.decorView.systemUiVisibility=light or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+    }
+    private fun mobilePageInsets(home:Boolean) {
+        if(!mobileMode||!::shellRoot.isInitialized||!::scroller.isInitialized)return
+        shellRoot.findViewWithTag<View>("mobile:categories")?.visibility=if(home)View.VISIBLE else View.GONE
+        val params=scroller.layoutParams as? FrameLayout.LayoutParams?:return
+        val top=dp(if(home)if(MobileCameoTheme.from(theme)==MobileCameoTheme.SLATE)96 else 92 else 48)
+        if(params.topMargin!=top){params.topMargin=top;scroller.layoutParams=params}
+    }
+    private fun exportDiagnostics() {saveDocument("Cameo-Diagnostics-${BuildConfig.VERSION_NAME}.json","application/json"){uri->
+        load(generation,{val report=CameoDiagnostics.report(this);contentResolver.openOutputStream(uri,"w")?.bufferedWriter()?.use{it.write(report)}?:error("The save location is unavailable.")}){toast("Sanitized report saved. Nothing was uploaded.")}
+    }}
+
+    private fun localEntryOptions(entry: CameoLibraryEntry) {
+        AlertDialog.Builder(this).setTitle(entry.name).setItems(arrayOf("Play","Add to playlist","Save a copy","Remove from library")){_,index->
+            when(index){0->playLibraryEntry(entry);1->playlistPicker(entry);2->requestDownload(entry.uri,entry.name,emptyMap());3->{library.removeLocal(entry.id);libraryPage()}}
+        }.setNegativeButton("Cancel",null).show()
+    }
+
+    private fun openLocalFiles(playlist: String?=null) {
+        pendingPlaylistImport=playlist
+        val intent=Intent(Intent.ACTION_OPEN_DOCUMENT).apply { type="video/*";addCategory(Intent.CATEGORY_OPENABLE)
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }
+        try { startActivityForResult(intent,2101) } catch(_:android.content.ActivityNotFoundException){pendingPlaylistImport=null;toast("No document picker is available. Install a compatible file provider.")}
+    }
+    private fun openLocalFolder() {
+        try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),2102) }
+        catch(_:android.content.ActivityNotFoundException){toast("This device has no folder picker. Use Open video files instead.")}
+    }
+    private fun openStream() { inputSetting("Open stream","HTTPS video address, or HTTP on your local network"," "){address->
+        if(MediaAddressPolicy.accepts(address)&&Uri.parse(address).scheme!="content")play(address,"Network stream",null,"stream:"+opaqueId(address))
+        else toast("Enter an HTTPS address or a local-network HTTP video address.")
+    } }
+    @Suppress("DEPRECATION") private fun openIncomingVideos() {
+        val incoming=intent
+        val uris=when(incoming.action){
+            Intent.ACTION_VIEW->listOfNotNull(incoming.data)
+            Intent.ACTION_SEND->listOfNotNull(incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+            Intent.ACTION_SEND_MULTIPLE->incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+            else->return
+        }
+        incoming.action=null;incoming.removeExtra(Intent.EXTRA_STREAM)
+        val videos=uris.distinct().filter{it.scheme=="content"&&!it.authority.isNullOrBlank()}.take(2000)
+        if(videos.isEmpty()){toast("Choose videos using a document provider.");return}
+        AlertDialog.Builder(this).setTitle("Add shared videos?")
+            .setMessage("Add ${videos.size} selected video${if(videos.size==1)""else"s"} to your Cameo library, then choose what to play. Some providers grant access only for this session.")
+            .setPositiveButton("Add to library"){_,_->
+                videos.forEach{uri->try{contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}catch(_:SecurityException){}}
+                importSelection(videos,false,null)
+            }.setNegativeButton("Cancel",null).show()
+    }
+    private fun opaqueId(value:String)=java.security.MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
+
+    @Deprecated("Document picker result") override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
+        super.onActivityResult(requestCode,resultCode,data)
+        if(requestCode==2103) {val save=pendingSave;pendingSave=null;if(resultCode==RESULT_OK)data?.data?.let { uri->
+            val grants=data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            try{when(grants){
+                Intent.FLAG_GRANT_READ_URI_PERMISSION->contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION->contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)->contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }}catch(_:SecurityException){/* Some providers offer only a session grant. */}
+            if(save!=null)save(uri)else toast("The save request was interrupted. Choose Download or Export again.")
+        };return}
+        if(requestCode==2104){if(resultCode==RESULT_OK)data?.data?.let{uri->load(generation,{CameoNzb.parse(this,uri)}){files->
+            if(files.isEmpty())toast("This NZB contains no supported files")else AlertDialog.Builder(this).setTitle("Choose the exact NZB file")
+                .setItems(files.map{"${it.name} · ${it.estimatedBytes/1_000_000} MB"}.toTypedArray()){_,index->saveNzb(files[index])}.setNegativeButton("Cancel",null).show()
+        }};return}
+        if(requestCode !in setOf(2101,2102))return
+        val playlist=pendingPlaylistImport;pendingPlaylistImport=null
+        if(resultCode!=RESULT_OK||data==null)return
+        val uris=mutableListOf<Uri>();data.clipData?.let { clips->repeat(clips.itemCount){uris+=clips.getItemAt(it).uri} }?:data.data?.let{uris+=it}
+        uris.forEach { uri -> try {contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}catch(_:SecurityException){ /* A temporary provider grant can still be used in this session. */ } }
+        if(uris.isEmpty()){toast("The file provider returned no selection.");return}
+        importSelection(uris,requestCode==2102,playlist)
+    }
+
+    private fun importSelection(uris:List<Uri>,folder:Boolean,playlist:String?) {
+        if(importCancellation!=null){toast("Finish the current import first.");return}
+        val cancellation=android.os.CancellationSignal();importCancellation=cancellation
+        val progress=AlertDialog.Builder(this).setTitle(if(folder)"Scanning folder"else"Importing videos")
+            .setMessage("Finding videos. No playback will start.").setNegativeButton("Cancel scan"){_,_->cancellation.cancel()}
+            .setOnCancelListener{cancellation.cancel()}.create()
+        progress.show()
+        worker.execute {
+            val result=runCatching {
+                val files=if(folder)CameoMediaImporter.videos(this,uris.first(),cancellation){count->runOnUiThread{if(progress.isShowing)progress.setMessage("Found $count videos. No playback will start.")}}
+                    else uris.map{cancellation.throwIfCanceled();it to CameoMediaImporter.name(this,it)}
+                cancellation.throwIfCanceled()
+                val imported=library.addLocalFiles(files.map{it.first.toString() to it.second})
+                if(playlist!=null)imported.forEach{library.addToPlaylist(playlist,it)}
+                imported.size
+            }
+            runOnUiThread {
+                if(importCancellation===cancellation)importCancellation=null
+                if(!isDestroyed) {
+                    progress.dismiss()
+                    result.onSuccess{count->toast("Imported $count video${if(count==1)""else"s"}${if(count>=2000)" (folder scan limit reached)"else""}")
+                        if(playlist==null)libraryPage()else playlistPage(playlist)}
+                        .onFailure{if(it is android.os.OperationCanceledException)toast("Import cancelled.")else showError(it as? Exception?:Exception("Import could not finish."))}
+                }
+            }
+        }
+    }
+
+    private fun playlistsPage() {
+        current={playlistsPage()};page("Playlists","Saved order, exact episodes and files. Importing never starts playback.")
+        body.addView(button("Create playlist"){inputSetting("Create playlist","Playlist name",""){name->val id=library.createPlaylist(name);playlistPage(id)}},margin(-1,48,bottom=12))
+        library.playlists().forEach {playlist->body.addView(button("${playlist.name} · ${playlist.entries.size} entries"){navigate{playlistPage(playlist.id)}},margin(-1,48,bottom=8))}
+    }
+    private fun playlistPage(id:String) {
+        val playlist=library.playlists().firstOrNull {it.id==id}?:run{playlistsPage();return}
+        current={playlistPage(id)};page(playlist.name,"Catalog entries ask for a source. Files use their saved identity.")
+        val actions=horizontalRow()
+        actions.addView(button("Play in order"){if(playlist.entries.isEmpty())toast("Add entries first")else startPlaylist(playlist,0)},margin(155,48,right=8))
+        actions.addView(button("Import videos"){openLocalFiles(id)},margin(155,48,right=8))
+        actions.addView(button("Add from library"){val entries=library.local()+library.watchlist();if(entries.isEmpty())toast("Add videos or watchlist titles first")else AlertDialog.Builder(this).setTitle("Choose an entry").setItems(entries.map{it.name}.toTypedArray()){_,i->library.addToPlaylist(id,entries[i]);playlistPage(id)}.show()},margin(170,48,right=8))
+        actions.addView(button("Rename"){inputSetting("Rename playlist","Name",playlist.name){library.renamePlaylist(id,it);playlistPage(id)}},margin(120,48,right=8))
+        actions.addView(button("Delete playlist"){confirm("Delete this playlist? Your video files stay in place."){library.deletePlaylist(id);playlistsPage()}},margin(160,48,right=8))
+        playlist.entries.forEachIndexed {index,entry->body.addView(button("${index+1}. ${entry.name}"){
+            val labels=mutableListOf("Play from here","Remove entry");if(index>0)labels+="Move up";if(index<playlist.entries.lastIndex)labels+="Move down"
+            AlertDialog.Builder(this).setTitle(entry.name).setItems(labels.toTypedArray()){_,choice->when(labels[choice]){
+                "Play from here"->startPlaylist(playlist,index);"Remove entry"->{library.removeFromPlaylist(id,index);playlistPage(id)}
+                "Move up"->{library.moveInPlaylist(id,index,index-1);playlistPage(id)};"Move down"->{library.moveInPlaylist(id,index,index+1);playlistPage(id)}
+            }}.show()
+        },margin(-1,52,top=10))}
+    }
+    private fun startPlaylist(playlist:CameoPlaylist,index:Int) {CameoPlaybackQueue.start(playlist.name,playlist.entries,index){entry->Handler(Looper.getMainLooper()).post{if(!isDestroyed)playLibraryEntry(entry)}}}
+    private fun playlistPicker(entry:CameoLibraryEntry) {
+        val lists=library.playlists();val labels=lists.map{it.name}+"Create a playlist"
+        AlertDialog.Builder(this).setTitle("Add ${entry.name}").setItems(labels.toTypedArray()){_,index->
+            if(index<lists.size){library.addToPlaylist(lists[index].id,entry);toast("Added to ${lists[index].name}")}
+            else inputSetting("New playlist","Name",""){name->val id=library.createPlaylist(name);library.addToPlaylist(id,entry);toast("Playlist saved")}
+        }.setNegativeButton("Cancel",null).show()
+    }
+    private fun playLibraryEntry(entry:CameoLibraryEntry) {
+        when(entry.kind){
+            "local","stream"->play(entry.uri,entry.name,entry.identity,entry.id)
+            "catalog"->{val identity=entry.identity;if(!resumed)startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                if(!identity?.catalogNamespace.isNullOrBlank())navigate{serviceScreens().openSaved(entry)}
+                else if(identity!=null&&(identity.type=="movie"||identity.episode>0))navigate{showSources(identity)}else entry.media?.let{navigate{details(it)}}}
+            "server"->read(generation,{val connection=desktopServices.connections().firstOrNull{it.id==entry.providerId}?:error("Reconnect this service first.");val file=DesktopMediaEntry(entry.fileId,entry.name,remotePath=entry.folderId,mediaSourceId=entry.remoteSourceId);desktopServices.playback(connection.id,file,expectedRevision=entry.accountRevision)}){playProvider(it,entry.name,entry.identity,entry.id)}
+            "provider"->{if(providers.accountRevision(entry.providerId)!=entry.accountRevision){toast("This service account changed. Add the file from its library again.");return}
+                read(generation,{val file=providers.files(entry.providerId,entry.folderId,expectedRevision=entry.accountRevision).firstOrNull{it.id==entry.fileId}?:error("This saved file is no longer available.");providers.playback(entry.providerId,file,expectedRevision=entry.accountRevision)}){playback->playProvider(playback,entry.name,entry.identity,entry.id)}}
+        }
+    }
+    private fun requestDownload(address:String,name:String,headers:Map<String,String>) {
+        val proposal=DownloadValidation.documentProposal(name,address)
+        saveDocument(proposal.first,proposal.second){uri->
+            runCatching{CameoDownloads.start(this,address,headers,uri,name)}.onSuccess{navigate{downloadsPage()}}.onFailure{toast(uiErrorMessage(it as? Exception?:Exception("Download failed")))}
+        }
+    }
+    private fun saveDocument(name:String,mime:String,save:(Uri)->Unit) {
+        if(pendingSave!=null){toast("Finish the open save dialog first");return};pendingSave=save
+        try{startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply{type=mime;addCategory(Intent.CATEGORY_OPENABLE);putExtra(Intent.EXTRA_TITLE,name.replace(Regex("[\\\\/:*?\"<>|]"),"_"));addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)},2103)}
+        catch(_:android.content.ActivityNotFoundException){pendingSave=null;toast("This device has no save-document provider.")}
+    }
+    private fun downloadsPage() {
+        current={downloadsPage()};page("Downloads","Direct files save to the location you choose. Keep Cameo running until completion.")
+        body.addView(button("Refresh progress"){downloadsPage()},margin(-1,48,bottom=12))
+        body.addView(button("Import an Easynews NZB"){importNzb()},margin(-1,48,bottom=12))
+        val jobs=CameoDownloads.list();if(jobs.isEmpty())body.addView(text("Choose Download on a title or file to save an offline copy.",14,muted))
+        CameoDownloads.loadError?.let{body.addView(text(it,14,muted),margin(-1,-2,bottom=10))}
+        jobs.forEach {job->
+            val progress=if(job.total>0)"${(job.bytes*100/job.total).coerceIn(0,100)}%" else "${job.bytes/1_000_000} MB"
+            body.addView(button("${job.name}\n${job.status} · $progress${if(job.message.isNotBlank())"\n${job.message}" else ""}"){
+                val video=job.kind=="video"||job.name.substringAfterLast('.',"").lowercase() in setOf("mkv","mp4","m4v","avi","mov","webm","ts","m2ts","mpg","mpeg","wmv","flv","ogv","3gp")
+                val labels=when(job.status){"completed"->if(video)arrayOf("Play downloaded file","Add to library","Remove from list")else arrayOf("Remove from list");"downloading","queued"->arrayOf("Cancel download");else->arrayOf("Remove from list")}
+                AlertDialog.Builder(this).setTitle(job.name).setItems(labels){_,choice->when(labels[choice]){
+                    "Play downloaded file"->play(job.destination,job.name,null,"download:${job.id}")
+                    "Add to library"->{library.addLocal(job.destination,job.name);toast("Added to library")}
+                    "Cancel download"->{CameoDownloads.cancel(job.id);downloadsPage()}
+                    else->{CameoDownloads.forget(job.id);downloadsPage()}
+                }}.show()
+            },margin(-1,-2,bottom=10))
+        }
+    }
+
+    private fun importNzb() {
+        if(!providers.connected("easynews")){toast("Connect your own Easynews account first");navigate{providerSettings("easynews")};return}
+        try{startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{type="*/*";addCategory(Intent.CATEGORY_OPENABLE)},2104)}
+        catch(_:android.content.ActivityNotFoundException){toast("This device has no document picker.")}
+    }
+    private fun addQualityFilter(choices:TvChoiceList,sources:List<SourceItem>) {
+        val labels=listOf("All sources")+CameoSourceQuality.options(sources)
+        if(labels.size<=2)return
+        val rows=(0 until choices.childCount).map(choices::getChildAt)
+        val picker=button("Quality · All sources"){}
+        picker.setOnClickListener{AlertDialog.Builder(this).setTitle("Choose quality").setItems(labels.toTypedArray()){_,index->
+            val selection=labels[index];picker.text="Quality · $selection"
+            rows.forEachIndexed{row,view->view.visibility=if(index==0||sources.getOrNull(row)?.let{CameoSourceQuality.label(it)}==selection)View.VISIBLE else View.GONE}
+            val visible=rows.filter{it.visibility==View.VISIBLE};visible.forEachIndexed{row,view->view.nextFocusUpId=visible.getOrNull(row-1)?.id?:picker.id;view.nextFocusDownId=visible.getOrNull(row+1)?.id?:View.NO_ID}
+            if(!mobileMode)visible.firstOrNull()?.requestFocus()
+        }.setNegativeButton("Cancel",null).show()}
+        picker.id=View.generateViewId();body.addView(picker,body.indexOfChild(choices),margin(-1,48,bottom=10))
+    }
+    private fun providerProfiles(providerId:String) {
+        current={providerProfiles(providerId)}
+        val spec=ProviderHub.SPECS.first{it.id==providerId};page("${spec.label} accounts","Saved accounts stay separate. Choose which account this playback service uses.")
+        body.addView(button("Add another account"){
+            inputSetting("Account name","A name for this account",""){label->
+                fun credential(username:String){inputSetting(spec.credentialLabel,"Enter your own ${spec.credentialLabel}","",secret=true,trimInput=providerId!="easynews"){token->
+                    load(generation,{providers.connect(providerId,token,username,profileLabel=label)}){updateBadge();providerProfiles(providerId)}
+                }}
+                if(providerId=="easynews")inputSetting("Easynews username","Your username",""){credential(it)}else credential("")
+            }
+        },margin(-1,48,bottom=12))
+        providers.accounts(providerId).forEach{account->body.addView(button("${account.label}${if(account.active)" · Active" else ""}"){
+            AlertDialog.Builder(this).setTitle(account.label).setItems(arrayOf("Use this account","Remove saved account")){_,choice->
+                if(choice==0)load(generation,{providers.selectAccount(providerId,account.id)}){updateBadge();providerProfiles(providerId)}
+                else confirm("Remove ${account.label} from this device?"){load(generation,{providers.removeAccount(providerId,account.id)}){updateBadge();providerProfiles(providerId)}}
+            }.setNegativeButton("Cancel",null).show()
+        },margin(-1,48,bottom=8))}
+    }
+    private fun reportingQueue() {
+        current={reportingQueue()};page("Playback reporting","Review saved progress updates. Retries respect service cooldowns and the connected account.")
+        body.addView(button("Retry pending updates"){retrySync();AdditionalTracking.retry(this);toast("Pending updates scheduled for retry");reportingQueue()},margin(-1,48,bottom=10))
+        val traktEntries=history.pending();section("Trakt · ${traktEntries.size} pending")
+        traktEntries.forEach{entry->body.addView(button("${entry.identity.title}${if(entry.identity.episode>0)" · S${entry.identity.season} E${entry.identity.episode}" else ""} · ${entry.percent.toInt()}%"){
+            confirm("Discard this pending Trakt update? Your local viewing progress stays saved."){load(generation,{history.acknowledge(entry.identity,entry.revision)}){reportingQueue()}}
+        },margin(-1,48,bottom=8))}
+        read(generation,{AdditionalTracking.pending(this)}){entries->
+            section("MDBList and Simkl · ${entries.size} pending")
+            entries.forEach{entry->body.addView(button("${entry.provider} · ${entry.title}${if(entry.episode>0)" · S${entry.season} E${entry.episode}" else ""}\n${entry.action} · ${entry.attempts} attempts"){
+                confirm("Discard this selected ${entry.provider} update?"){load(generation,{AdditionalTracking.discard(this,entry.provider,entry.revision)}){removed->toast(if(removed)"Pending update discarded" else "This update already changed or finished");reportingQueue()}}
+            },margin(-1,-2,bottom=8))}
+        }
+    }
+    private fun watchedActions(identity:PlaybackIdentity) {
+        val choices=mutableListOf<Pair<String,()->Unit>>()
+        listOf("Trakt" to trakt.connected(),"MDBList" to mdblist.connected(),"Simkl" to simkl.connected()).filter{it.second}.forEach{(service,_)->
+            listOf(true,false).forEach{watched->val label="$service · Mark ${if(watched)"watched" else "unwatched"}"
+                choices+=label to {confirm("$label for ${identity.title}${if(identity.episode>0)" S${identity.season} E${identity.episode}" else ""}?"){
+                    load(generation,{when(service){"Trakt"->trakt.setWatched(identity,watched);"MDBList"->mdblist.setWatched(identity,watched);else->simkl.setWatched(identity,watched)}}){toast("$service history updated")}
+                }}
+            }
+        }
+        if(choices.isEmpty()){toast("Connect a tracking service first");return}
+        AlertDialog.Builder(this).setTitle("Watched status").setItems(choices.map{it.first}.toTypedArray()){_,index->choices[index].second()}.setNegativeButton("Cancel",null).show()
+    }
+    private fun offerAddonSubtitle(imported:ImportedSubtitle,language:String) {
+        AlertDialog.Builder(this).setTitle(imported.displayName).setItems(arrayOf("Attach to current video","Save subtitle")){_,choice->
+            if(choice==0){
+                if(imported.requiresVlc&&InAppPlaybackSession.currentPlayer !is LibVlcPlayer){toast("This subtitle format needs VLC. Select VLC for this video.");return@setItems}
+                if(InAppPlaybackSession.loadSubtitle(imported.uri,imported.displayName,language,imported.mimeType))toast("Subtitle attached")else toast("Start a compatible video first")
+            }else saveDocument(imported.displayName,"text/plain"){target->load(generation,{
+                contentResolver.openOutputStream(target,"w")?.use{out->contentResolver.openInputStream(imported.uri)?.use{it.copyTo(out)}?:error("Subtitle unavailable.")}?:error("Save location unavailable.")
+            }){toast("Subtitle saved")}}
+        }.setNegativeButton("Cancel",null).show()
+    }
+    private fun saveNzb(file:NzbFile) {
+        confirm("Download ${file.name} using your Easynews NNTP account? RAR extraction and PAR2 repair are not included."){
+            saveDocument(file.name,"application/octet-stream"){destination->
+                val username=store.get("easynews.username");val password=store.get("easynews.token")
+                CameoDownloads.startCustom(this,file.name,destination,file.estimatedBytes){cancel,progress->CameoNzb.download(this,file,username,password,destination,cancel,progress)}
+                navigate{downloadsPage()}
+            }
+        }
+    }
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(size).toFloat()); setTextColor(color)
+        text = value; setTextSize(if(mobileMode)TypedValue.COMPLEX_UNIT_SP else TypedValue.COMPLEX_UNIT_PX, if(mobileMode)size.toFloat()else dp(size).toFloat()); setTextColor(color)
         typeface = if (theme.isConcept) ConceptUi(this@MainActivity, theme).font(if (bold) 650 else 400)
             else Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
         includeFontPadding = false
     }
     private fun button(label: String, action: () -> Unit): TextView = text(label, 13, ink, true).apply {
+        if(mobileMode)minHeight=dp(48)
         gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(5), dp(12), dp(5)); background = rounded(panel, 7)
-        isFocusable = true; isFocusableInTouchMode = true; isClickable = true; contentDescription = label; tag = "action:$label"
+        isFocusable = true; isFocusableInTouchMode = !mobileMode; isClickable = true; contentDescription = label; tag = "action:$label"
         setOnFocusChangeListener { view, focus ->
             view.background = rounded(if (focus) accent else panel, 7)
             view.foreground = if (focus) FocusRingDrawable(accent, dp(7).toFloat(), true, dp(1).toFloat()) else null
-            setTextColor(if (focus) Color.rgb(4, 15, 24) else ink)
+            setTextColor(if (focus) activePalette.buttonText else ink)
         }
-        setOnClickListener { action() }
+        setOnClickListener { try{action()}catch(error:Exception){AlertDialog.Builder(this@MainActivity).setTitle("Cameo").setMessage(uiErrorMessage(error)).setPositiveButton("Close",null).show()} }
     }
-    private fun primaryButton(label: String, action: () -> Unit): TextView = text(label, 15, theme.palette.buttonText, true).apply {
+    private fun primaryButton(label: String, action: () -> Unit): TextView = text(label, 15, activePalette.buttonText, true).apply {
         tag = "primary:$label"
-        gravity = Gravity.CENTER; isFocusable = true; isFocusableInTouchMode = true; isClickable = true
-        background = rounded(theme.palette.primaryButton, if (theme == ThemeSpec.EDITORIAL || theme == ThemeSpec.NEON) 23 else 6)
+        gravity = Gravity.CENTER; isFocusable = true; isFocusableInTouchMode = !mobileMode; isClickable = true
+        background = rounded(activePalette.primaryButton, if (theme == ThemeSpec.EDITORIAL || theme == ThemeSpec.NEON) 23 else 6)
         setOnFocusChangeListener { view, focused ->
-            view.foreground = if (focused) FocusRingDrawable(if (theme == ThemeSpec.NEON) theme.palette.secondaryAccent else accent,
+            view.foreground = if (focused) FocusRingDrawable(if (theme == ThemeSpec.NEON) activePalette.secondaryAccent else accent,
                 dp(if (theme == ThemeSpec.EDITORIAL || theme == ThemeSpec.NEON) 23 else 6).toFloat(), true, dp(1).toFloat()) else null
         }
         setOnClickListener { action() }
@@ -1968,7 +2453,7 @@ class MainActivity : Activity() {
     private fun rounded(color: Int, radius: Int, stroke: Int = Color.TRANSPARENT) = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; setColor(color); cornerRadius = dp(radius).toFloat(); if (stroke != Color.TRANSPARENT) setStroke(dp(2), stroke) }
     private fun withAlpha(color: Int, alpha: Int) = Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
     private fun margin(width: Int, height: Int, top: Int = 0, bottom: Int = 0, right: Int = 0) = LinearLayout.LayoutParams(if (width < 0) width else dp(width), if (height < 0) height else dp(height)).apply { setMargins(0, dp(top), dp(right), dp(bottom)) }
-    private fun dp(value: Int) = (value * resources.displayMetrics.widthPixels / 960f).roundToInt()
+    private fun dp(value: Int) = (value * if(mobileMode)resources.displayMetrics.density else resources.displayMetrics.widthPixels/960f).roundToInt()
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     private fun confirm(message: String, action: () -> Unit) { AlertDialog.Builder(this).setMessage(message).setPositiveButton("Continue") { _, _ -> action() }.setNegativeButton("Cancel", null).show() }
 }

@@ -13,6 +13,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
+/** Local reporting-queue UI data. Revision is an event UUID, never an account revision. */
+data class TrackingPendingSummary(
+    val provider: String, val revision: String, val title: String, val season: Int, val episode: Int,
+    val action: String, val attempts: Int, val nextRetryAt: Long,
+)
+
 /** Optional trackers are independent of the existing Trakt path and never block playback on I/O. */
 object AdditionalTracking {
     private val worker = Executors.newSingleThreadScheduledExecutor { runnable ->
@@ -24,6 +30,10 @@ object AdditionalTracking {
         runCatching { queue(context).record(identity, percent, action) }
     }
     fun retry(context: Context) { runCatching { queue(context).retry() } }
+    fun pending(context: Context): List<TrackingPendingSummary> = runCatching { queue(context).pending() }.getOrDefault(emptyList())
+    /** Call on a worker: an already-started report finishes before a discard can be confirmed. */
+    fun discard(context: Context, provider: String, revision: String): Boolean =
+        runCatching { queue(context).discard(provider, revision) }.getOrDefault(false)
     fun clear(context: Context, provider: String) { runCatching { queue(context).clear(provider) } }
     fun isEnabled(context: Context, provider: String): Boolean = runCatching { queue(context).isEnabled(provider) }.getOrDefault(false)
     fun setEnabled(context: Context, provider: String, enabled: Boolean): Boolean = runCatching {
@@ -139,6 +149,41 @@ internal class AdditionalTrackingQueue(
         }
     }
 
+    /** A local snapshot of durable pause/stop events for currently consented accounts; no requests. */
+    fun pending(): List<TrackingPendingSummary> = synchronized(queueLock) {
+        readEvents().filter { event ->
+            EVENT_REVISION.matches(event.revision) && runCatching {
+                val tracker = trackers[event.provider]
+                tracker != null && tracker.connected() && tracker.accountRevision() == event.account &&
+                    store.enabledAccount(event.provider) == event.account
+            }.getOrDefault(false)
+        }.sortedByDescending { it.createdAt }.map { event ->
+            val label = event.identity.title.replace(Regex("[\\p{Cntrl}]"), " ").trim().take(160)
+                .takeUnless { it.contains("://") || it.contains(Regex("(?i)(?:authorization|api[_-]?key|access[_-]?token|password)\\s*[:=]")) }
+                .orEmpty().ifBlank { if (event.identity.type == "series") "TV episode" else "Movie" }
+            TrackingPendingSummary(event.provider, event.revision, label,
+                if (event.identity.type == "series") event.identity.season else 0,
+                if (event.identity.type == "series") event.identity.episode else 0,
+                event.action, event.attempts, event.nextAttempt.coerceAtLeast(0L))
+        }
+    }
+
+    /** Serialize with dispatch so a successful discard cannot subsequently start its queued send. */
+    fun discard(provider: String, revision: String): Boolean {
+        if (provider !in trackers || !EVENT_REVISION.matches(revision)) return false
+        return synchronized(dispatchLock) { synchronized(queueLock) queue@{
+            val events = readEvents()
+            val selected = events.singleOrNull { it.provider == provider && it.revision == revision }
+                ?: return@queue false
+            val tracker = trackers[provider] ?: return@queue false
+            if (!tracker.connected() || tracker.accountRevision() != selected.account || store.enabledAccount(provider) != selected.account)
+                return@queue false
+            writeEvents(events.filterNot { it.provider == provider && it.revision == revision && it.key == selected.key })
+            if (newest[selected.key] == revision) newest.remove(selected.key)
+            true
+        } }
+    }
+
     fun clear(provider: String) {
         if (provider !in trackers) return
         synchronized(queueLock) {
@@ -250,6 +295,7 @@ internal class AdditionalTrackingQueue(
     }
 
     companion object {
+        private val EVENT_REVISION = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         private val queueLock = Any()
         private val dispatchLock = Any()
         private val newest = mutableMapOf<String, String>()

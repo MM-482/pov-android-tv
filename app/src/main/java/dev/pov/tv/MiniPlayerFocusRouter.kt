@@ -12,7 +12,7 @@ internal class MiniPlayerFocusRouter(private val content: ViewGroup, private val
 
     init {
         mini.isFocusable = true
-        mini.isFocusableInTouchMode = true
+        mini.isFocusableInTouchMode = CameoDevice.isTelevision(mini.context)
         mini.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
     }
 

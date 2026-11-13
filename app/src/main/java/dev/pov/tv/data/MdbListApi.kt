@@ -79,7 +79,8 @@ class MdbListApi internal constructor(
         }
         Unit
     }
-    fun markWatched(identity: PlaybackIdentity) = synchronized(writeLock) {
+    fun markWatched(identity: PlaybackIdentity) = setWatched(identity, true)
+    fun setWatched(identity: PlaybackIdentity, watched: Boolean) = synchronized(writeLock) {
         withAccount { account ->
             validate(identity, episode = true)
             val item = JSONObject().put("ids", JSONObject().put("imdb", identity.imdbId))
@@ -89,7 +90,8 @@ class MdbListApi internal constructor(
                     .put("episodes", JSONArray().put(JSONObject().put("number", identity.episode)))))
                 JSONObject().put("shows", JSONArray().put(item))
             }
-            confirmWrite(objectValue(request(account, "/sync/watched", "POST", body).body), listOf("updated", "added", "existing"), kind)
+            confirmWrite(objectValue(request(account, if (watched) "/sync/watched" else "/sync/watched/remove", "POST", body).body),
+                if (watched) listOf("updated", "added", "existing") else listOf("removed", "deleted"), kind, allowZero = !watched)
         }
         Unit
     }
@@ -114,7 +116,7 @@ class MdbListApi internal constructor(
         if (!movie(identity)) target.put("season", JSONObject().put("number", identity.season)
             .put("episode", JSONObject().put("number", identity.episode)))
         return JSONObject().put(if (movie(identity)) "movie" else "show", target)
-            .put("progress", percent.coerceIn(0.0, 100.0)).put("app_name", "POV Standalone")
+            .put("progress", percent.coerceIn(0.0, 100.0)).put("app_name", "Cameo")
     }
 
     private enum class Mode { NONE, CURSOR, OFFSET }
@@ -194,7 +196,7 @@ class MdbListApi internal constructor(
         return reply
     }
 
-    private fun confirmWrite(value: JSONObject, fields: List<String>, kind: String) {
+    private fun confirmWrite(value: JSONObject, fields: List<String>, kind: String, allowZero: Boolean = false) {
         fun count(item: Any?): Long = when (item) {
             is Number -> item.toLong()
             is JSONArray -> item.length().toLong()
@@ -208,6 +210,12 @@ class MdbListApi internal constructor(
             else -> 0
         }
         if (failures(value.opt("not_found")) > 0 || failures(value.opt("errors")) > 0) throw ApiException(404, "MDBList could not match this title. The update was not confirmed.")
+        if (allowZero && fields.any { field -> when (val item = value.opt(field)) {
+            is Number -> item.toLong() >= 0
+            is JSONArray -> true
+            is JSONObject -> item.has(kind) && item.optLong(kind, -1) >= 0
+            else -> false
+        } }) return
         if (fields.none { value.has(it) } || fields.sumOf { count(value.opt(it)) } <= 0) {
             throw ApiException(0, "MDBList did not confirm this update. Refresh before trying again.")
         }
@@ -231,6 +239,7 @@ class MdbListApi internal constructor(
     }
     private fun movie(identity: PlaybackIdentity) = identity.type in setOf("movie", "movies")
     private fun validate(identity: PlaybackIdentity, episode: Boolean) {
+        require(identity.catalogNamespace.isBlank()) { "Import this title into the verified catalog before updating MDBList." }
         require(identity.imdbId.matches(IMDB_ID)) { "A matched IMDb title is required for MDBList tracking." }
         require(movie(identity) || identity.type in setOf("series", "show", "shows", "episode")) { "Invalid MDBList media type." }
         if (episode && !movie(identity)) require(identity.season >= 0 && identity.episode > 0) { "Choose a specific episode before updating MDBList." }

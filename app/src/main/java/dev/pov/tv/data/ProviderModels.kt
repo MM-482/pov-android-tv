@@ -7,6 +7,7 @@ import java.net.URI
 data class ProviderSpec(val id: String, val label: String, val credentialLabel: String, val credentialUrl: String,
     val cloud: Boolean, val magnet: Boolean, val experimental: Boolean = false)
 data class ProviderAccount(val provider: String, val label: String, val premium: Boolean, val detail: String = "")
+data class ProviderAccountProfile(val id: String, val provider: String, val label: String, val active: Boolean)
 data class ProviderFile(val id: String, val name: String, val size: Long = 0, val link: String = "", val direct: Boolean = false)
 data class ProviderFolder(val provider: String, val id: String, val name: String, val ready: Boolean,
     val files: List<ProviderFile> = emptyList(), val directory: Boolean = false)
@@ -41,10 +42,18 @@ object LiveProviderTransport : ProviderTransport {
 interface ProviderCredentials {
     fun get(key: String): String
     fun putAll(values: Map<String, String>)
+    fun snapshot(keys: Collection<String>): Map<String, String> = keys.associateWith(::get)
+    fun putIfUnchanged(expected: Map<String, String>, values: Map<String, String>): Boolean {
+        if (expected.any { (key, value) -> get(key) != value }) return false
+        putAll(values)
+        return true
+    }
 }
 internal class EncryptedProviderCredentials(private val store: SecureStore) : ProviderCredentials {
     override fun get(key: String) = store.get(key)
     override fun putAll(values: Map<String, String>) = store.putAll(values)
+    override fun snapshot(keys: Collection<String>) = store.getAll(keys)
+    override fun putIfUnchanged(expected: Map<String, String>, values: Map<String, String>) = store.putAllIfUnchanged(expected, values)
 }
 
 internal fun providerObject(raw: String): JSONObject = try { JSONObject(raw) } catch (_: Exception) {

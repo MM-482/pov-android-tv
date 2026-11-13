@@ -34,7 +34,9 @@
             <TextView android:id="@id/exo_duration" android:layout_width="50dp" android:layout_height="wrap_content"
                 android:gravity="end" android:text="0:00" android:textSize="11sp" android:textColor="#A6B6C8" />
         </LinearLayout>
-        <LinearLayout android:id="@+id/pov_player_actions" android:layout_width="match_parent"
+        <HorizontalScrollView android:layout_width="match_parent" android:layout_height="44dp"
+            android:fillViewport="true" android:scrollbars="none" android:focusable="false">
+        <LinearLayout android:id="@+id/pov_player_actions" android:layout_width="wrap_content"
             android:layout_height="44dp" android:orientation="horizontal" android:gravity="center_vertical">
             <ImageButton android:id="@id/exo_rew" android:layout_width="40dp" android:layout_height="40dp"
                 android:contentDescription="Back 10 seconds" android:padding="10dp"
@@ -61,7 +63,10 @@
                 android:drawableStart="@drawable/pov_ic_boost" android:nextFocusUp="@id/exo_progress" />
             <Button android:id="@+id/pov_browse" style="@style/POVPlayerAction" android:text="Browse"
                 android:drawableStart="@drawable/pov_ic_browse" android:nextFocusUp="@id/exo_progress" />
+            <Button android:id="@+id/pov_more" style="@style/POVPlayerAction" android:text="More"
+                android:contentDescription="More playback options" android:nextFocusUp="@id/exo_progress" />
         </LinearLayout>
+        </HorizontalScrollView>
     </LinearLayout>
 </FrameLayout>
 

@@ -9,6 +9,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionParameters
@@ -34,6 +35,11 @@ internal interface VlcPlaybackDriver {
     val surfacesReady: Boolean get() = false
     val nativeVideoTrack: Int get() = -1
     val nativeVoutCount: Int get() = 0
+    val rendererSupported: Boolean get() = false
+    val remoteOutputName: String? get() = null
+    fun discoverRenderers(update: (VlcRendererSnapshot) -> Unit, failure: (String) -> Unit): VlcRendererScan? = null
+    fun selectRenderer(id: String): Boolean = false
+    fun disconnectRenderer(): Boolean = false
     fun tracks(): List<VlcTrack>
     fun open(item: MediaItem, subtitleLanguage: String)
     fun play()
@@ -41,6 +47,13 @@ internal interface VlcPlaybackDriver {
     fun stop()
     fun seekTo(position: Long)
     fun setVolume(volume: Float) {}
+    fun setPlaybackSpeed(speed: Float): Boolean = false
+    val subtitleDelayMicros: Long get() = 0L
+    fun setSubtitleDelayMicros(delay: Long): Boolean = false
+    fun restoreSubtitleDelayMicros(delay: Long): Boolean = setSubtitleDelayMicros(delay)
+    fun chapters(): List<PlaybackChapter> = emptyList()
+    fun selectChapter(index: Int): Boolean = false
+    fun playbackDetails(): NativePlaybackDetails? = null
     fun selectTrack(type: Int, id: Int): Boolean
     fun selectAutomatic(type: Int, language: String)
     fun attach(view: SurfaceView)
@@ -69,7 +82,10 @@ internal class LibVlcPlayer(
     private var closed = false
     private var firstFrame = false
     private var normalVolume = 1f
+    private var speed = PlaybackParameters.DEFAULT
+    private var pendingSubtitleRestore: Long? = null
     private var outputReady = false
+    private var localFrameBaseline = 0L
     private var renderedFrameAnnounced = false
     private var pauseInFlight = false
     private var playInFlight = false
@@ -99,6 +115,23 @@ internal class LibVlcPlayer(
     internal val nativeSurfacesReady: Boolean get() = driver.surfacesReady
     internal val nativeVideoTrack: Int get() = driver.nativeVideoTrack
     internal val nativeVoutCount: Int get() = driver.nativeVoutCount
+    internal val rendererSupported: Boolean get() = !closed && driver.rendererSupported
+    internal val remoteOutputName: String? get() = driver.remoteOutputName
+    internal fun discoverRenderers(update: (VlcRendererSnapshot) -> Unit, failure: (String) -> Unit): VlcRendererScan? =
+        if (closed) null else driver.discoverRenderers(update, failure)
+    internal fun selectRenderer(id: String): Boolean {
+        if (closed || !prepared || !driver.selectRenderer(id)) return false
+        // This acknowledges the route request, never proof of receiver pictures.
+        reconcileOutput(); invalidateState()
+        return true
+    }
+    internal fun disconnectRenderer(): Boolean {
+        if (closed || !driver.disconnectRenderer()) return false
+        localFrameBaseline = driver.renderedFrames
+        outputReady = false; renderedFrameAnnounced = false
+        reconcileOutput(); scheduleReadiness(); invalidateState()
+        return true
+    }
 
     init { driver.listener = ::onDriverEvent }
 
@@ -109,6 +142,7 @@ internal class LibVlcPlayer(
             Player.COMMAND_GET_CURRENT_MEDIA_ITEM, Player.COMMAND_GET_TIMELINE,
             Player.COMMAND_GET_METADATA, Player.COMMAND_GET_TRACKS,
             Player.COMMAND_GET_VOLUME, Player.COMMAND_SET_VOLUME,
+            Player.COMMAND_SET_SPEED_AND_PITCH,
             Player.COMMAND_SET_TRACK_SELECTION_PARAMETERS, Player.COMMAND_SET_VIDEO_SURFACE,
         ).addIf(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, driver.seekable)
             .addIf(Player.COMMAND_SEEK_TO_DEFAULT_POSITION, driver.seekable)
@@ -127,6 +161,7 @@ internal class LibVlcPlayer(
             .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000)
             .setTrackSelectionParameters(parameters).setVideoSize(driver.videoSize)
             .setVolume(normalVolume)
+            .setPlaybackParameters(speed)
             .setNewlyRenderedFirstFrame(firstFrame.also { firstFrame = false })
             .setContentPositionMs(PositionSupplier { pendingSeek ?: settlingSeek ?: driver.position.coerceAtLeast(0) })
             .setContentBufferedPositionMs(PositionSupplier { driver.position.coerceAtLeast(0) })
@@ -136,6 +171,7 @@ internal class LibVlcPlayer(
     override fun handleSetMediaItems(items: List<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> {
         require(items.size == 1) { "VLC playback supports one active video" }
         item = items.single(); failure = null; prepared = false; status = Player.STATE_IDLE
+        pendingSubtitleRestore = null
         resetPreparation()
         // A fresh open already starts at zero. Seeking back to zero on the first Playing
         // callback needlessly resets an adaptive demux while its clock is initializing.
@@ -191,6 +227,57 @@ internal class LibVlcPlayer(
         return done()
     }
 
+    override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> {
+        // These are the same bounded speed choices exposed by Cameo desktop. Native VLC
+        // time-stretch keeps pitch; a separate pitch control is intentionally not advertised.
+        val requested = playbackParameters.speed.coerceIn(0.5f, 2f)
+        if (driver.setPlaybackSpeed(requested)) speed = PlaybackParameters(requested)
+        return done()
+    }
+
+    internal val subtitleDelayMicros: Long get() = driver.subtitleDelayMicros
+    internal fun adjustSubtitleDelay(deltaMicros: Long): Boolean {
+        if (closed || item == null) return false
+        return driver.setSubtitleDelayMicros((driver.subtitleDelayMicros + deltaMicros).coerceIn(-60_000_000L, 60_000_000L))
+    }
+    internal fun resetSubtitleDelay(): Boolean = !closed && item != null && driver.setSubtitleDelayMicros(0L)
+    internal fun restoreSubtitleDelay(micros: Long): Boolean {
+        if (closed || item == null || micros !in -60_000_000L..60_000_000L) return false
+        pendingSubtitleRestore = micros
+        applyRestoredSubtitleDelay()
+        return true // Accepted for restoration; native input/track creation may still be in flight.
+    }
+    private fun applyRestoredSubtitleDelay() {
+        pendingSubtitleRestore?.let { if (driver.restoreSubtitleDelayMicros(it)) pendingSubtitleRestore = null }
+    }
+    internal fun chapters(): List<PlaybackChapter> = if (closed) emptyList() else driver.chapters()
+    internal fun selectChapter(index: Int): Boolean = !closed && driver.selectChapter(index)
+    internal fun playbackDetails(): NativePlaybackDetails? = if (closed) null else driver.playbackDetails()
+
+    /** Apply native caption defaults to the same video while retaining pause, position and tracks. */
+    internal fun reloadCaptionAppearance(): Boolean {
+        val media = item ?: return false
+        if (closed || !prepared || failure != null) return false
+        val position = driver.position.coerceAtLeast(0L)
+        val selected = driver.tracks().filter { it.selected }.map { it.type to it.id }
+        val delay = driver.subtitleDelayMicros
+        resetPreparation()
+        pendingSeek = position.takeIf { it > 0L }
+        status = Player.STATE_BUFFERING
+        driver.open(media, subtitleLanguage)
+        selected.forEach { (type, id) -> driver.selectTrack(type, id) }
+        parameters.disabledTrackTypes.forEach { type ->
+            if (type == C.TRACK_TYPE_AUDIO || type == C.TRACK_TYPE_TEXT) driver.selectTrack(type, -1)
+        }
+        driver.setPlaybackSpeed(speed.speed)
+        restoreSubtitleDelay(delay)
+        applyEffectiveVolume()
+        requestNativePlay()
+        scheduleReadiness()
+        invalidateState()
+        return true
+    }
+
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         val target = positionMs.coerceAtLeast(0).let { if (driver.duration > 0) it.coerceAtMost(driver.duration) else it }
         if (status == Player.STATE_ENDED) {
@@ -241,6 +328,7 @@ internal class LibVlcPlayer(
 
     override fun handleStop(): ListenableFuture<*> {
         resetPreparation()
+        pendingSubtitleRestore = null
         requestedPlay = false; prepared = false; status = Player.STATE_IDLE; driver.stop()
         return done()
     }
@@ -267,6 +355,7 @@ internal class LibVlcPlayer(
         if (closed || !prepared) return
         // Native pause/track events can arrive after an error; they cannot revive a failed session.
         if (failure != null && event != VlcEvent.ERROR) return
+        if (event == VlcEvent.READY || event == VlcEvent.CHANGED) applyRestoredSubtitleDelay()
         when (event) {
             VlcEvent.OPENING -> Unit
             VlcEvent.READY -> { playInFlight = false; pauseAcknowledged = false }
@@ -315,6 +404,7 @@ internal class LibVlcPlayer(
     private fun resetPreparation() {
         handler.removeCallbacks(readinessCheck)
         outputReady = false; renderedFrameAnnounced = false
+        localFrameBaseline = 0L
         pauseInFlight = false; playInFlight = false; pauseAcknowledged = false; resumeAfterPauseAck = false
         settlingSeek = null; firstFrame = false
     }
@@ -348,7 +438,9 @@ internal class LibVlcPlayer(
     private fun reconcileOutput() {
         if (closed || !prepared || failure != null) return
         val frames = driver.renderedFrames
-        if (!outputReady && frames > 0) outputReady = true
+        val remote = remoteOutputName != null
+        if (!outputReady && (if (remote) driver.actuallyPlaying else
+            frames > localFrameBaseline || (frames in 1 until localFrameBaseline))) outputReady = true
         val target = pendingSeek
         if (outputReady && target != null && driver.seekable && driver.actuallyPlaying) {
             pendingSeek = null; settlingSeek = target; seekFrameBaseline = frames
@@ -357,11 +449,11 @@ internal class LibVlcPlayer(
             return
         }
         settlingSeek?.let { seek ->
-            val newPicture = frames > seekFrameBaseline || (frames in 1 until seekFrameBaseline)
+            val newPicture = remote || frames > seekFrameBaseline || (frames in 1 until seekFrameBaseline)
             if (newPicture && kotlin.math.abs(driver.position - seek) <= 1_000) settlingSeek = null
         }
         if (readyForUse()) {
-            if (!renderedFrameAnnounced) { renderedFrameAnnounced = true; firstFrame = true }
+            if (!renderedFrameAnnounced && !remote) { renderedFrameAnnounced = true; firstFrame = true }
             handler.removeCallbacks(readinessCheck)
             if (!requestedPlay) requestNativePause()
         }

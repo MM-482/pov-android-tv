@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Cameo — Android mobile concepts</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#f1f4fa;background:#101219;color-scheme:dark}
+    *{box-sizing:border-box}body{margin:0}button,a{-webkit-tap-highlight-color:transparent}button{font:inherit}a{color:#b9d5ff;text-underline-offset:4px}button:focus-visible,a:focus-visible{outline:3px solid #a0cdff;outline-offset:5px}
+    .wrap{max-width:1450px;margin:auto;padding:52px 40px 40px}.eyebrow{font-size:12px;letter-spacing:.16em;color:#a6b8d2;text-transform:uppercase}h1{font-size:clamp(36px,5vw,66px);font-weight:550;line-height:1.08;letter-spacing:-.045em;margin:16px 0 22px}h1 span{color:#9aa4b6;font-weight:400}.intro{max-width:850px;font-size:18px;line-height:1.65;color:#b9c3d5;margin-bottom:22px}.note{display:inline-block;border:1px solid #3b4456;border-radius:30px;padding:9px 15px;font-size:12px;color:#d1dced;line-height:1.5}.jump{display:flex;flex-wrap:wrap;gap:10px;margin:28px 0 22px}.jump a{text-decoration:none;color:#dfe8f8;background:#1b202b;border:1px solid #343f53;border-radius:10px;padding:11px 16px}.jump a:hover{background:#273246;border-color:#a0c0f2}.comparison{margin:0 0 34px;font-size:14px;line-height:1.6;color:#aab7ce}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:25px;align-items:start}.concept{scroll-margin-top:24px;min-width:0;background:#191e29;border:1px solid #343e50;border-radius:18px;overflow:hidden}.preview{display:flex;align-items:center;justify-content:center;width:100%;padding:16px;border:0;background:#0c1018;cursor:zoom-in}.preview img{display:block;width:100%;height:auto;object-fit:contain;border-radius:8px}.caption{padding:20px 21px 23px}.caption-top{display:flex;align-items:center;justify-content:space-between;gap:12px}.caption h2{margin:0;font-size:23px;font-weight:550;letter-spacing:-.02em}.number{color:#a5b5ce;font-size:12px;letter-spacing:.08em;margin-right:9px}.caption p{margin:12px 0 17px;color:#b8c3d7;font-size:14px;line-height:1.6}.palette{display:flex;gap:7px}.palette i{display:block;width:15px;height:15px;border-radius:50%;border:1px solid #ffffff55;background:var(--swatch)}.view{font-size:12px;color:#b5c2d7;white-space:nowrap}footer{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;padding-top:35px;font-size:13px;line-height:1.7;color:#a7b4c9}footer p{margin:0}footer nav{display:flex;gap:18px;flex-wrap:wrap}
+    dialog{border:1px solid #52617b;border-radius:16px;background:#121824;color:#f1f5ff;padding:16px;width:min(95vw,760px);max-width:none;max-height:96vh;overflow:auto}dialog::backdrop{background:#03060dea;backdrop-filter:blur(7px)}.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 0 14px}.dialog-head h2{font-size:18px;font-weight:550;margin:0}.dialog-controls{display:flex;gap:7px}.dialog-controls button{border:1px solid #53617a;background:#253147;color:#f3f6ff;padding:9px 12px;border-radius:8px;cursor:pointer}.dialog-image{display:block;width:100%;height:auto;max-height:76vh;object-fit:contain}.dialog-hint{font-size:12px;color:#b0bfd6;line-height:1.6;margin:12px 0 0}
+    @media(max-width:1050px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:38px 26px}.view{display:none}}
+    @media(max-width:620px){.grid{grid-template-columns:1fr}.wrap{padding:28px 18px}.intro{font-size:16px}.preview{padding:12px}.caption{padding:19px}.dialog-head{align-items:flex-start;flex-direction:column}.dialog-controls{width:100%;justify-content:flex-end}.dialog-controls button{padding:9px 11px}.dialog-image{max-height:72vh}.jump{gap:8px}.jump a{padding:10px 13px}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="eyebrow">Cameo / Android mobile / November 2026</div>
+    <h1>Made for mobile.<br><span>Five visual directions.</span></h1>
+    <p class="intro">Portrait reference designs for Cameo on Android phones. Compare five matching design families, each adapted for a touch screen and shown as a complete app screen without a device frame. The approved design will be the one-to-one visual target for later mobile implementation, checked against captures at a defined screen size.</p>
+    <span class="note">Mobile reference designs · Illustrative content · Not implemented app screenshots</span>
+    <nav class="jump" aria-label="Jump to mobile concept">
+      <a href="#glass">01 Glass</a><a href="#cinema">02 Cinema</a><a href="#slate">03 Slate</a><a href="#pearl">04 Pearl</a><a href="#aurora">05 Aurora</a>
+    </nav>
+    <p class="comparison">Mobile and Android TV have separate layout references while sharing each theme’s visual identity. The current app has not been changed to match these designs. <a href="../cameo-android-concepts-2026-11-02/index.html">Compare the five Android TV directions →</a></p>
+    <div class="grid">
+      <article class="concept" id="glass" data-concept="01">
+        <button class="preview" data-index="0" aria-label="Enlarge mobile concept 1, Glass"><img src="01-cameo-mobile-glass.png" alt="Cameo Glass mobile concept in portrait, with cool blue glass surfaces and a cinematic featured title."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">01</span>Glass</h2><span class="view">Enlarge ↗</span></div><p>Cool blue glass, light surfaces and an immersive featured title. A calm premium direction for touch navigation.</p><div class="palette" role="img" aria-label="Palette: ink blue, steel blue, ice blue and white"><i style="--swatch:#0b1728"></i><i style="--swatch:#314e6a"></i><i style="--swatch:#87c8ff"></i><i style="--swatch:#f5f8fc"></i></div></div>
+      </article>
+      <article class="concept" id="cinema" data-concept="02">
+        <button class="preview" data-index="1" aria-label="Enlarge mobile concept 2, Cinema"><img src="02-cameo-mobile-cinema.png" alt="Cameo Cinema mobile concept in portrait, with deep black surfaces, champagne accents and dramatic film typography."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">02</span>Cinema</h2><span class="view">Enlarge ↗</span></div><p>Matte black and warm champagne, with dramatic type and a cinematic mood carried into a portrait layout.</p><div class="palette" role="img" aria-label="Palette: black, champagne, amber and ivory"><i style="--swatch:#080807"></i><i style="--swatch:#d3ac70"></i><i style="--swatch:#e6be84"></i><i style="--swatch:#f9f3e6"></i></div></div>
+      </article>
+      <article class="concept" id="slate" data-concept="03">
+        <button class="preview" data-index="2" aria-label="Enlarge mobile concept 3, Slate"><img src="03-cameo-mobile-slate.png" alt="Cameo Slate mobile concept in portrait, with graphite surfaces, emerald accents and a clear content-first layout."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">03</span>Slate</h2><span class="view">Enlarge ↗</span></div><p>Practical graphite surfaces and emerald accents. A clean, familiar streaming interface with content at the center.</p><div class="palette" role="img" aria-label="Palette: graphite, charcoal, emerald and white"><i style="--swatch:#1b2025"></i><i style="--swatch:#2a3036"></i><i style="--swatch:#00c986"></i><i style="--swatch:#f4f6f7"></i></div></div>
+      </article>
+      <article class="concept" id="pearl" data-concept="04">
+        <button class="preview" data-index="3" aria-label="Enlarge mobile concept 4, Pearl"><img src="04-cameo-mobile-pearl.png" alt="Cameo Pearl mobile concept in portrait, with a light ivory canvas, dark editorial typography and slate blue accents."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">04</span>Pearl</h2><span class="view">Enlarge ↗</span></div><p>A light ivory gallery, dark editorial type and slate blue accents. Airy and understated on a phone screen.</p><div class="palette" role="img" aria-label="Palette: ivory, charcoal, slate blue and mist blue"><i style="--swatch:#f8f4ef"></i><i style="--swatch:#24292d"></i><i style="--swatch:#315779"></i><i style="--swatch:#81a1bf"></i></div></div>
+      </article>
+      <article class="concept" id="aurora" data-concept="05">
+        <button class="preview" data-index="4" aria-label="Enlarge mobile concept 5, Aurora"><img src="05-cameo-mobile-aurora.png" alt="Cameo Aurora mobile concept in portrait, with midnight violet surfaces, cyan accents and restrained futuristic glow."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">05</span>Aurora</h2><span class="view">Enlarge ↗</span></div><p>Midnight violet with cyan details and restrained glow. A futuristic design family adapted to a compact touch layout.</p><div class="palette" role="img" aria-label="Palette: midnight, violet, aqua and pale white"><i style="--swatch:#0f1024"></i><i style="--swatch:#24143c"></i><i style="--swatch:#13dbe0"></i><i style="--swatch:#edeffb"></i></div></div>
+      </article>
+    </div>
+    <footer><p>Made for Mark Mateo · Mobile concept review only</p><nav aria-label="Concept files"><a href="../cameo-android-concepts-2026-11-02/index.html">Android TV concepts</a><a href="assets.json">Asset manifest</a><a href="prompts.json">Generation prompts</a><a href="README.md">Read me</a></nav></footer>
+  </main>
+  <dialog id="viewer" aria-labelledby="viewer-title" aria-describedby="viewer-hint">
+    <div class="dialog-head"><h2 id="viewer-title" aria-live="polite"></h2><div class="dialog-controls"><button id="previous" type="button" aria-label="Previous mobile concept">← Previous</button><button id="next" type="button" aria-label="Next mobile concept">Next →</button><button id="close" type="button" autofocus>Close ×</button></div></div>
+    <img class="dialog-image" id="viewer-image" alt="">
+    <p class="dialog-hint" id="viewer-hint">Arrow keys compare concepts · Escape closes · Generated mobile visual studies, not app screenshots.</p>
+  </dialog>
+  <script>
+    (() => {
+      const previews = [...document.querySelectorAll('.preview')];
+      const viewer = document.querySelector('#viewer');
+      const title = document.querySelector('#viewer-title');
+      const image = document.querySelector('#viewer-image');
+      let selected = 0;
+      let opener = null;
+      function show(index) {
+        selected = (index + previews.length) % previews.length;
+        const preview = previews[selected];
+        const source = preview.querySelector('img');
+        const concept = preview.closest('.concept');
+        const name = concept.querySelector('h2').lastChild.textContent.trim();
+        title.textContent = `${concept.dataset.concept} ${name} · Android mobile`;
+        image.src = source.getAttribute('src');
+        image.alt = source.alt;
+      }
+      previews.forEach((preview, index) => preview.addEventListener('click', () => {
+        opener = preview;
+        show(index);
+        viewer.showModal();
+      }));
+      document.querySelector('#previous').addEventListener('click', () => show(selected - 1));
+      document.querySelector('#next').addEventListener('click', () => show(selected + 1));
+      document.querySelector('#close').addEventListener('click', () => viewer.close());
+      viewer.addEventListener('close', () => {if (opener) opener.focus();});
+      viewer.addEventListener('keydown', event => {
+        if (event.key === 'ArrowRight') {event.preventDefault();show(selected + 1);}
+        if (event.key === 'ArrowLeft') {event.preventDefault();show(selected - 1);}
+      });
+      viewer.addEventListener('click', event => {
+        if (event.target !== viewer) return;
+        const bounds = viewer.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) viewer.close();
+      });
+    })();
+  </script>
+</body>
+</html>

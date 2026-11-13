@@ -33,6 +33,13 @@ class SecureStore(context: Context) {
 
     fun put(key: String, value: String) = putAll(mapOf(key to value))
 
+    /** One coherent snapshot for account/profile state shared by separate API adapters. */
+    fun getAll(keys: Collection<String>): Map<String, String> = synchronized(lock) { keys.associateWith { get(it) } }
+
+    fun putAllIfUnchanged(expected: Map<String, String>, values: Map<String, String>): Boolean = synchronized(lock) {
+        if (expected.any { (key, value) -> get(key) != value }) false else { putAll(values); true }
+    }
+
     /** Persist rotating OAuth tokens in one transaction before making another request. */
     fun putAll(values: Map<String, String>) = synchronized(lock) {
         val encrypted = values.mapValues { (name, value) ->

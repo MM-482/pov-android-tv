@@ -37,7 +37,7 @@ internal class SubtitleHttp(
                 connection.connectTimeout = 15_000
                 connection.readTimeout = 25_000
                 connection.requestMethod = method
-                connection.setRequestProperty("User-Agent", "POV-Standalone v0.3")
+                connection.setRequestProperty("User-Agent", "Cameo-Android/${dev.pov.tv.BuildConfig.VERSION_NAME}")
                 connection.setRequestProperty("Accept", if (request.download) "*/*" else "application/json")
                 headers.forEach { (key, value) ->
                     if (value.any { it == '\r' || it == '\n' }) throw SubtitleException("A saved subtitle credential is invalid.")

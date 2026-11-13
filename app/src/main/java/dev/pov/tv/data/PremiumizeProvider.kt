@@ -38,6 +38,7 @@ internal class PremiumizeProvider(private val http: ProviderTransport) : Provide
         return ProviderPlayback(providerHttps(fresh.providerString("link")))
     }
     override fun prepare(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource {
+        SourceIdentityPolicy.selected(source, identity)
         val data = call(token, "/transfer/directdl", listOf("src" to providerHash(source.infoHash)))
         val content = data.optJSONArray("content") ?: throw ApiException(0, "Premiumize did not return playable files for this source.")
         val files = content.providerObjects().mapIndexed { index, item -> ProviderFile(index.toString(),

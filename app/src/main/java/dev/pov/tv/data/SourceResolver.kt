@@ -20,7 +20,7 @@ class SourceResolver internal constructor(
     fun sourcesUncached(identity: PlaybackIdentity): List<SourceItem> = sourceChoices(identity, false)
 
     private fun sourceChoices(identity: PlaybackIdentity, checkTorBox: Boolean, expectedRevision: String? = null): List<SourceItem> {
-        validateIdentity(identity)
+        SourceIdentityPolicy.catalog(identity)
         val cacheRevision = if (checkTorBox) expectedRevision ?: torbox.accountRevision() else null
         val endpoint = endpoint(sourceEndpoint())
         val id = if (identity.type == "series") {
@@ -82,15 +82,12 @@ class SourceResolver internal constructor(
 
     /** Called only after the user selects a source. May add that source to the user's TorBox library. */
     fun prepare(source: SourceItem, identity: PlaybackIdentity, expectedRevision: String? = null): PreparedSource {
-        validateIdentity(identity)
+        SourceIdentityPolicy.selected(source, identity)
         val revision = expectedRevision ?: torbox.accountRevision()
         if (expectedRevision != null && torbox.accountRevision() != expectedRevision) {
             throw ApiException(401, "The TorBox account changed. Reopen this source or cloud folder.")
         }
         val session = torbox.forRevision(revision)
-        require(identity.type != "series" || !EpisodeFilename.isExplicitMismatch(source.title, identity.season, identity.episode)) {
-            "This source identifies a different episode. Choose another source."
-        }
         if (source.directUrl.isNotBlank()) {
             require(isHttps(source.directUrl)) { "Only HTTPS video sources are supported." }
             return PreparedSource.Direct(source.directUrl, identity)
@@ -138,14 +135,6 @@ class SourceResolver internal constructor(
         }
     }
 
-    private fun validateIdentity(identity: PlaybackIdentity) {
-        require(IMDB_ID.matches(identity.imdbId)) { "This title has no supported IMDb identifier." }
-        require(identity.type == "movie" || identity.type == "series") { "This media type is not supported." }
-        require(identity.type != "series" || (identity.season >= 0 && identity.episode > 0)) {
-            "Choose an episode before searching for sources."
-        }
-    }
-
     private fun endpoint(value: String): String {
         val candidate = value.trim().ifEmpty { DEFAULT_ENDPOINT }.removeSuffix("/").removeSuffix("/manifest.json")
         require(candidate.length <= 4_096 && isHttps(candidate)) { "Enter a valid HTTPS Stremio add-on endpoint." }
@@ -162,7 +151,6 @@ class SourceResolver internal constructor(
     private companion object {
         const val DEFAULT_ENDPOINT = "https://torrentio.strem.fun"
         val HASH = Regex("[a-f0-9]{40}")
-        val IMDB_ID = Regex("tt[0-9]{5,12}")
     }
 }
 

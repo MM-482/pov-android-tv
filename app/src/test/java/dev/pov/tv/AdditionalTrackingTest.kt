@@ -217,4 +217,83 @@ class AdditionalTrackingTest {
         h.queue.record(media, 27.0, "pause"); h.drain()
         assertEquals(1, h.tracker.sent.size)
     }
+
+    @Test fun pendingSummariesExposeOnlyCurrentDurableEventMetadata() {
+        val h = Harness()
+        val episode = PlaybackIdentity("tt1234567", "series", "Episode\n title", 2, 3)
+        h.queue.record(episode, 45.0, "pause")
+        val summary = h.queue.pending().single()
+        assertEquals("simkl", summary.provider)
+        assertEquals("Episode  title", summary.title)
+        assertEquals(2, summary.season); assertEquals(3, summary.episode)
+        assertEquals("pause", summary.action)
+        assertEquals(0, summary.attempts); assertEquals(0L, summary.nextRetryAt)
+        assertNotEquals(h.tracker.revision, summary.revision)
+        assertFalse(summary.toString().contains(h.tracker.revision))
+        assertTrue(h.tracker.sent.isEmpty())
+        h.queue.record(media, 1.0, "start")
+        assertEquals(1, h.queue.pending().size)
+    }
+
+    @Test fun pendingSummaryRedactsPrivateLookingTitlesAndNeverDisplaysStaleAccountEntries() {
+        val h = Harness()
+        h.queue.record(media.copy(title = "https://media.example/video?api_key=fixture-private"), 20.0, "pause")
+        assertEquals("Movie", h.queue.pending().single().title)
+        assertFalse(h.queue.pending().toString().contains("fixture-private"))
+        h.tracker.revision = UUID.randomUUID().toString()
+        assertTrue(h.queue.pending().isEmpty())
+        assertEquals(1, h.store.count()) // Inspection itself does not clear encrypted durable work.
+    }
+
+    @Test fun exactDiscardPreventsQueuedDispatchWithoutChangingConsent() {
+        val h = Harness()
+        h.queue.record(media, 30.0, "pause")
+        val revision = h.queue.pending().single().revision
+        assertTrue(h.queue.discard("simkl", revision))
+        assertFalse(h.queue.discard("simkl", revision))
+        assertEquals(0, h.store.count())
+        assertTrue(h.queue.isEnabled("simkl"))
+        h.drain()
+        assertTrue(h.tracker.sent.isEmpty())
+    }
+
+    @Test fun staleDiscardCannotRemoveAReplacementEventOrAnotherProvider() {
+        val h = Harness()
+        h.queue.record(media, 30.0, "pause")
+        val old = h.queue.pending().single().revision
+        h.queue.record(media, 31.0, "stop")
+        val replacement = h.queue.pending().single().revision
+        assertNotEquals(old, replacement)
+        assertFalse(h.queue.discard("simkl", old))
+        assertFalse(h.queue.discard("mdblist", replacement))
+        assertEquals(replacement, h.queue.pending().single().revision)
+        assertTrue(h.queue.discard("simkl", replacement))
+        h.drain()
+        assertTrue(h.tracker.sent.isEmpty())
+    }
+
+    @Test fun discardAfterFailureInvalidatesScheduledRetryButPreservesOtherEntries() {
+        val h = Harness()
+        h.tracker.onSend = { throw ApiException(429, "Wait", retryAfterSeconds = 20) }
+        h.queue.record(media, 30.0, "pause"); h.drain()
+        val revision = h.queue.pending().single().revision
+        assertEquals(1, h.queue.pending().single().attempts)
+        assertEquals(21_000L, h.queue.pending().single().nextRetryAt)
+        assertTrue(h.queue.discard("simkl", revision))
+        h.now += 20_000; h.later.single().second.invoke(); h.queue.retry(); h.drain()
+        assertEquals(1, h.tracker.sent.size)
+        assertTrue(h.queue.pending().isEmpty())
+    }
+
+    @Test fun consentOrAccountChangeRejectsAnOldDisplayedDiscardRevision() {
+        val h = Harness()
+        h.queue.record(media, 30.0, "pause")
+        val revision = h.queue.pending().single().revision
+        h.tracker.revision = UUID.randomUUID().toString()
+        assertFalse(h.queue.discard("simkl", revision))
+        assertEquals(1, h.store.count())
+        assertFalse(h.queue.discard("simkl", "private-not-an-event-uuid"))
+        h.drain()
+        assertTrue(h.tracker.sent.isEmpty())
+    }
 }

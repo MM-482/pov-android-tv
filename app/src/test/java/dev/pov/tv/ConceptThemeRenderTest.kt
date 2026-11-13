@@ -23,10 +23,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
 import java.util.Locale
 
-/** Exercises real native shell/home trees; image loading and all navigation/playback calls are fakes. */
+/** Historical internal layout regressions; these legacy compositions are no longer TV choices. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -38,8 +39,43 @@ class ConceptThemeRenderTest {
     private val otherEpisode = PlaybackIdentity("tt0944947", "series", "Other Series Fixture", 2, 4)
 
     @Test fun `all six native home compositions keep feature actions title cards and footer inside viewport`() {
-        assertEquals(concepts, ThemeSpec.selectableThemes)
+        assertTrue("Legacy layout definitions must not be offered as current TV choices", concepts.none { it in ThemeSpec.selectableThemes })
         concepts.forEach { theme -> fixture(theme).use { screen -> assertVisibleComposition(screen) } }
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `all six legacy Cameo wordmarks show the full name on one line without navigation overlap`() {
+        assertWordmarksFit()
+    }
+
+    @Test @Config(qualifiers = "w800dp-h450dp-land-mdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `smaller televisions keep all six legacy wordmarks complete and unclipped`() {
+        assertWordmarksFit()
+    }
+
+    private fun assertWordmarksFit() {
+        concepts.forEach { theme -> fixture(theme).use { screen ->
+            val wordmark = screen.target("concept:wordmark") as TextView
+            assertInside(screen, wordmark)
+            assertEquals("${theme.id} full brand", "CAMEO", wordmark.text.toString())
+            assertEquals("${theme.id} single brand line", 1, wordmark.lineCount)
+            val layout = requireNotNull(wordmark.layout)
+            assertEquals("${theme.id} final letter included", 5, layout.getLineEnd(0))
+            assertEquals("${theme.id} no omitted brand letters", 0, layout.getEllipsisCount(0))
+            assertTrue("${theme.id} no horizontal brand clipping", layout.getLineWidth(0) <= wordmark.width - wordmark.compoundPaddingLeft - wordmark.compoundPaddingRight + 1f)
+            assertTrue("${theme.id} no vertical brand clipping: layout=${layout.height}, view=${wordmark.height}, paddingTop=${wordmark.compoundPaddingTop}, paddingBottom=${wordmark.compoundPaddingBottom}, textSize=${wordmark.textSize}, fontMetrics=${wordmark.paint.fontMetricsInt}", layout.height <= wordmark.height - wordmark.compoundPaddingTop - wordmark.compoundPaddingBottom)
+            val brandBounds = bounds(screen, wordmark)
+            screen.shell.navigationViews.values.forEach { cell ->
+                assertFalse("${theme.id} brand must not overlap ${cell.contentDescription}", Rect.intersects(brandBounds, bounds(screen, cell)))
+            }
+            val profile = requireNotNull(theme.conceptProfile)
+            if (profile.railWidth > 0) {
+                val scale = screen.shell.root.width / 960f
+                val railBounds = Rect((profile.railX * scale).toInt(), (profile.railY * scale).toInt(),
+                    ((profile.railX + profile.railWidth) * scale).toInt() + 1, ((profile.railY + profile.railHeight) * scale).toInt() + 1)
+                assertTrue("${theme.id} brand stays inside its rail", railBounds.contains(brandBounds))
+            }
+        } }
     }
 
     @Test

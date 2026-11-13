@@ -17,4 +17,30 @@ class ExternalSubtitleFilesTest {
             catch (_: IllegalArgumentException) { }
         }
     }
+
+    @Test fun `desktop text subtitle formats are recognized by their own syntax`() {
+        val examples = mapOf(
+            "vtt" to "WEBVTT\n\n00:01.000 --> 00:03.500\nCaption.\n",
+            "ass" to "[Script Info]\nTitle: Fixture\n[Events]\nFormat: Layer, Start, End, Text\nDialogue: 0,0:00:01.00,0:00:03.50,Caption\n",
+            "ssa" to "[Events]\nDialogue: Marked=0,0:00:01.00,0:00:03.50,Caption\n",
+            "sub" to "{25}{75}Caption\n",
+        )
+        examples.forEach { (extension, text) ->
+            assertEquals(extension, text, ExternalSubtitleFiles.readSubtitle(ByteArrayInputStream(text.toByteArray()), extension))
+        }
+    }
+
+    @Test fun `wrong extensions documents binary captions and invalid encodings cannot masquerade as subtitles`() {
+        val invalid = listOf(
+            "vtt" to valid.toByteArray(),
+            "ass" to "[Events]\nnot a dialogue".toByteArray(),
+            "sub" to byteArrayOf(0, 1, 2, 3),
+            "srt" to byteArrayOf(0xc3.toByte(), 0x28),
+            "html" to valid.toByteArray(),
+        )
+        invalid.forEach { (extension, bytes) ->
+            try { ExternalSubtitleFiles.readSubtitle(ByteArrayInputStream(bytes), extension); fail("Invalid $extension accepted") }
+            catch (_: IllegalArgumentException) { }
+        }
+    }
 }

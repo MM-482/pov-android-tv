@@ -61,6 +61,7 @@ internal class RealDebridProvider(private val http: ProviderTransport) : Provide
         return ProviderPlayback(providerHttps(response.providerString("download")))
     }
     override fun prepare(token: String, source: SourceItem, identity: PlaybackIdentity): ProviderPreparedSource {
+        SourceIdentityPolicy.selected(source, identity)
         val added = providerObject(call(token, "/torrents/addMagnet", listOf("magnet" to providerHash(source.infoHash))))
         val id = added.providerString("id").takeIf { it.isNotBlank() }
             ?: throw ApiException(0, "Real-Debrid could not add this source.")

@@ -31,6 +31,8 @@ class LibVlcPlayerTest {
         override var buffering = true
         override var renderedFrames = 0L
         override var actuallyPlaying = false
+        override var remoteOutputName: String? = null
+        override val rendererSupported = true
         override val videoSize = VideoSize(1920, 1080)
         var trackList = listOf(
             VlcTrack(7, C.TRACK_TYPE_AUDIO, Format.Builder().setSampleMimeType("audio/ac3").setLanguage("en").build(), true),
@@ -44,18 +46,38 @@ class LibVlcPlayerTest {
         val automaticSelections = mutableListOf<Pair<Int, String>>()
         val seeks = mutableListOf<Long>()
         val volumes = mutableListOf<Float>()
+        var lastRate = 1f
+        var delayMicros = 0L
+        var acceptDelay = true
+        override val subtitleDelayMicros: Long get() = delayMicros
+        var chapterList = listOf(PlaybackChapter(0, "Opening", 0, 30_000, true), PlaybackChapter(1, "Arrival", 30_000, 90_000, false))
+        var chapterSelected = -1
         override fun tracks() = trackList
-        override fun open(item: MediaItem, subtitleLanguage: String) { position = 0; renderedFrames = 0; actuallyPlaying = false }
+        override fun open(item: MediaItem, subtitleLanguage: String) { position = 0; renderedFrames = 0; actuallyPlaying = false; delayMicros = 0; lastRate = 1f }
         override fun play() { plays++ }
         override fun pause() { pauses++ }
         override fun stop() { stops++ }
         override fun seekTo(position: Long) { this.position = position; seeks += position; renderedFrames++ }
         override fun setVolume(volume: Float) { volumes += volume }
+        override fun setPlaybackSpeed(speed: Float): Boolean { lastRate = speed; return true }
+        override fun setSubtitleDelayMicros(delay: Long): Boolean { if (!acceptDelay) return false; delayMicros = delay; return true }
+        override fun chapters() = chapterList
+        override fun selectChapter(index: Int): Boolean {
+            if (chapterList.none { it.index == index }) return false
+            chapterSelected = index; return true
+        }
+        override fun playbackDetails() = NativePlaybackDetails(20, renderedFrames, 1, 2500)
         override fun selectTrack(type: Int, id: Int): Boolean { selections += type to id; return true }
         override fun selectAutomatic(type: Int, language: String) { automaticSelections += type to language }
         override fun attach(view: SurfaceView) { attached = view }
         override fun detach() { attached = null }
         override fun addSubtitle(uri: Uri) = true
+        override fun selectRenderer(id: String): Boolean {
+            if (id != "fixture-display") return false
+            remoteOutputName = "Fixture display"
+            return true
+        }
+        override fun disconnectRenderer(): Boolean { remoteOutputName = null; return true }
         override fun release() { released = true }
         fun started() { buffering = false; seekable = true; actuallyPlaying = true; listener?.invoke(VlcEvent.READY) }
         fun outputFrame() { renderedFrames++; listener?.invoke(VlcEvent.CHANGED) }
@@ -65,6 +87,89 @@ class LibVlcPlayerTest {
             started(); outputFrame(); listener?.invoke(VlcEvent.CHANGED)
             if (pauses > previousPauses) acknowledgePause()
         }
+    }
+
+    @Test fun `remote route accepts native clock without pretending local pictures were rendered`() {
+        val driver = Driver(); val player = LibVlcPlayer(driver, "en")
+        player.setMediaItem(MediaItem.fromUri("https://media.example/fixture.mp4"))
+        player.prepare(); player.play(); driver.started()
+        assertEquals(Player.STATE_BUFFERING, player.playbackState)
+        assertTrue(player.selectRenderer("fixture-display"))
+        assertEquals("Fixture display", player.remoteOutputName)
+        assertEquals(0L, player.renderedOutputFrames)
+        assertEquals(Player.STATE_READY, player.playbackState)
+        player.seekTo(22_000)
+        assertEquals(22_000L, driver.position)
+        assertEquals(1, driver.plays)
+        player.release()
+    }
+
+    @Test fun `disconnect preserves current native player clock and pause while requiring fresh local output`() {
+        val driver = Driver(); val player = LibVlcPlayer(driver, "en")
+        player.setMediaItem(MediaItem.fromUri("https://media.example/fixture.mp4"))
+        player.prepare(); player.play(); driver.ready()
+        driver.position = 31_000
+        assertTrue(player.selectRenderer("fixture-display"))
+        player.pause(); driver.acknowledgePause()
+        val plays = driver.plays; val pauses = driver.pauses
+        assertTrue(player.disconnectRenderer())
+        assertNull(player.remoteOutputName)
+        assertFalse(player.playWhenReady)
+        assertEquals(31_000L, driver.position)
+        assertEquals(plays, driver.plays); assertEquals(pauses, driver.pauses)
+        assertEquals(Player.STATE_BUFFERING, player.playbackState)
+        driver.outputFrame()
+        assertEquals(Player.STATE_READY, player.playbackState)
+        player.release()
+    }
+
+    @Test fun `desktop playback speed reaches VLC and survives a caption reload while paused`() {
+        val driver = Driver(); val player = LibVlcPlayer(driver, "en")
+        player.setMediaItem(MediaItem.fromUri("https://media.example/fixture.mkv"), 15_000)
+        player.prepare(); driver.ready()
+        player.setPlaybackSpeed(1.5f)
+        assertEquals(1.5f, driver.lastRate)
+        assertEquals(1.5f, player.playbackParameters.speed)
+        player.adjustSubtitleDelay(500_000)
+        driver.position = 23_000
+        assertTrue(player.reloadCaptionAppearance())
+        assertFalse(player.playWhenReady)
+        driver.ready()
+        assertEquals(23_000L, player.currentPosition)
+        assertEquals(1.5f, driver.lastRate)
+        assertEquals(500_000L, driver.subtitleDelayMicros)
+        assertTrue(driver.selections.contains(C.TRACK_TYPE_AUDIO to 7))
+        player.release()
+    }
+
+    @Test fun `chapters caption timing and safe diagnostics are exposed without private source details`() {
+        val driver = Driver(); val player = LibVlcPlayer(driver, "en")
+        player.setMediaItem(MediaItem.fromUri("https://media.example/fixture.mkv")); player.prepare(); driver.ready()
+        assertEquals("Arrival", player.chapters()[1].name)
+        assertTrue(player.selectChapter(1)); assertEquals(1, driver.chapterSelected)
+        assertFalse(player.selectChapter(99))
+        assertTrue(player.adjustSubtitleDelay(-500_000)); assertEquals(-500_000L, player.subtitleDelayMicros)
+        assertTrue(player.resetSubtitleDelay()); assertEquals(0L, player.subtitleDelayMicros)
+        assertEquals(2500L, player.playbackDetails()?.inputKbitPerSecond)
+        player.release()
+        assertTrue(player.chapters().isEmpty()); assertNull(player.playbackDetails()); assertFalse(player.selectChapter(1))
+    }
+
+    @Test fun `restored caption delay survives early refusal until native input becomes ready`() {
+        val driver = Driver().apply { acceptDelay = false }; val player = LibVlcPlayer(driver, "en")
+        player.setMediaItem(MediaItem.fromUri("https://media.example/fixture.mkv"))
+        player.prepare()
+        assertTrue(player.restoreSubtitleDelay(1_250_000L))
+        assertEquals(0L, driver.subtitleDelayMicros)
+        driver.ready()
+        assertEquals(0L, driver.subtitleDelayMicros)
+        driver.acceptDelay = true
+        driver.listener?.invoke(VlcEvent.CHANGED)
+        assertEquals(1_250_000L, driver.subtitleDelayMicros)
+        player.setMediaItem(MediaItem.fromUri("https://media.example/next-episode.mkv"))
+        player.prepare(); driver.ready()
+        assertEquals(0L, driver.subtitleDelayMicros)
+        player.release()
     }
 
     @Test fun `prepare while paused seeks resume clock once and does not turn into autoplay`() {

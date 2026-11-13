@@ -1,8 +1,8 @@
-POV Standalone - independent Android TV port preview
+Cameo - independent Android mobile and TV adaptation
 
 Standalone app made by Mark Mateo. Based on the original POV Kodi add-on by kodifitzwell.
 
-POV visual identity and original fanart: kodifitzwell, sourced from POV 6.10.06 at https://github.com/kodifitzwell/repo (revision 2ea2eb7f330988ade16d388d3832b8e4b60c6b24). The selected launcher icon is generated design concept 3, created using the original POV icon as its reference. The upstream add-on manifest declares GNU GPL version 3. The original author is not affiliated with this Android port.
+Original POV visual identity and fanart: kodifitzwell, sourced from POV 6.10.06 at https://github.com/kodifitzwell/repo (revision 2ea2eb7f330988ade16d388d3832b8e4b60c6b24). Those original assets retain their attribution. Cameo's five current launcher icons are carried over unchanged from the supplied Cameo Windows source. The upstream add-on manifest declares GNU GPL version 3. The original author is not affiliated with this Android adaptation.
 
 The transparent in-app POV wordmark is a generated cutout based on that selected icon. The six October 26, 2026 design-preview images are generated concepts using the same POV visual identity. They are picker references, not screenshots of the running application; the interface renders native controls and live catalog artwork separately.
 
@@ -11,7 +11,7 @@ The new Android application source is provided under GNU GPL version 3. The acco
 AndroidX Media3 - Android Open Source Project, Apache License 2.0. https://github.com/androidx/media
 Kotlin standard library - JetBrains, Apache License 2.0. https://github.com/JetBrains/kotlin
 
-Inter - the Inter Project Authors; Cormorant Garamond - the Cormorant Project Authors. Both bundled font families use the SIL Open Font License, Version 1.1. Font source attribution is in FONT_NOTICES.md beside this notice. The original licenses and copyright notices are included as fonts/Inter-OFL.txt and fonts/CormorantGaramond-OFL.txt.
+Inter - the Inter Project Authors; Cormorant Garamond - the Cormorant Project Authors; Instrument Serif - the Instrument Serif Project Authors. These bundled fonts use the SIL Open Font License, Version 1.1. Font source attribution is in FONT_NOTICES.md beside this notice. The original licenses and copyright notices are included alongside the font files.
 
 Catalog metadata and artwork are supplied at runtime by Cinemeta / their respective rights holders. https://github.com/Stremio/stremio-addons
 Anime discovery metadata and artwork: Kitsu, https://kitsu.app/ and https://hummingbird-me.github.io/api-docs/ . Exact IMDb mapping fallback: Anime Kitsu, an independent metadata service by TheBeastLT, https://github.com/TheBeastLT/stremio-kitsu-anime . No provider source code or full mapping database is incorporated. These services and original artwork rights remain with their respective owners; this app is independent of them.

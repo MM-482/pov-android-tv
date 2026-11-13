@@ -102,7 +102,7 @@ internal class TvChoiceRow(
     palette: ThemePalette = ThemeSpec.CINEMATIC.palette,
     action: () -> Unit,
 ) : FrameLayout(context) {
-    private fun px(value: Int) = (value * resources.displayMetrics.widthPixels / 960f).roundToInt().coerceAtLeast(1)
+    private fun px(value: Int) = (value * if(CameoDevice.isTelevision(context))resources.displayMetrics.widthPixels/960f else resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
     val cardHeight = px(if (eyebrow.isBlank()) 79 else 101)
     val gap = px(9)
     private val labels = mutableListOf<TextView>()
@@ -111,7 +111,7 @@ internal class TvChoiceRow(
         tag = key
         contentDescription = listOf(eyebrow, title, detail).filter(String::isNotBlank).joinToString(". ")
         isFocusable = true
-        isFocusableInTouchMode = true
+        isFocusableInTouchMode = CameoDevice.isTelevision(context)
         isClickable = true
         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES

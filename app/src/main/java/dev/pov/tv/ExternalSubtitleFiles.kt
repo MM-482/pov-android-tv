@@ -11,28 +11,36 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
-internal data class ImportedSubtitle(val uri: Uri, val displayName: String)
+internal data class ImportedSubtitle(val uri: Uri, val displayName: String,
+    val mimeType: String = "application/x-subrip", val requiresVlc: Boolean = false)
 
-/** Copy a user-selected SAF document once; both native and Media3 engines can read the same file. */
+/** Read a bounded user-selected SAF text subtitle; never use its name as a filesystem path. */
 internal object ExternalSubtitleFiles {
     const val MAX_BYTES = 4 * 1024 * 1024
     private val timing = Regex("(?m)^\\s*\\d{1,3}:\\d{2}:\\d{2}[,.]\\d{3}\\s*-->\\s*\\d{1,3}:\\d{2}:\\d{2}[,.]\\d{3}[^\\r\\n]*$")
+    private val formats = mapOf("srt" to "application/x-subrip", "vtt" to "text/vtt", "ass" to "text/x-ssa",
+        "ssa" to "text/x-ssa", "sub" to "application/x-microdvd")
 
     fun import(context: Context, uri: Uri): ImportedSubtitle {
-        require(uri.scheme == "content") { "Choose an SRT document from the Android file picker." }
+        require(uri.scheme == "content") { "Choose a subtitle document from the Android file picker." }
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
         }?.take(160)?.replace(Regex("[\\p{Cntrl}]"), "") ?: "External subtitles.srt"
-        val text = context.contentResolver.openInputStream(uri)?.use(::readSrt)
+        val extension = name.substringAfterLast('.', "srt").lowercase(java.util.Locale.ROOT)
+        require(extension in formats) { "Choose an SRT, VTT, ASS, SSA, or text SUB subtitle file." }
+        val text = context.contentResolver.openInputStream(uri)?.use { readSubtitle(it, extension) }
             ?: throw IllegalArgumentException("The selected provider could not open this file.")
         val directory = File(context.cacheDir, "subtitles/imported").apply { check(mkdirs() || isDirectory) }
         // No provider path or filename becomes a filesystem path.
-        val file = File(directory, "${UUID.randomUUID()}.srt")
+        val file = File(directory, "${UUID.randomUUID()}.$extension")
         file.writeText(text, Charsets.UTF_8)
-        return ImportedSubtitle(Uri.fromFile(file), name)
+        return ImportedSubtitle(Uri.fromFile(file), name, requireNotNull(formats[extension]), extension == "sub")
     }
 
-    internal fun readSrt(input: InputStream): String {
+    internal fun readSrt(input: InputStream): String = readSubtitle(input, "srt")
+
+    internal fun readSubtitle(input: InputStream, extension: String): String {
+        require(extension in formats) { "Choose an SRT, VTT, ASS, SSA, or text SUB subtitle file." }
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
         while (output.size() <= MAX_BYTES) {
@@ -52,9 +60,19 @@ internal object ExternalSubtitleFiles {
         val text = try {
             encoding.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString().removePrefix("\uFEFF")
-        } catch (_: Exception) { throw IllegalArgumentException("Save this SRT as UTF-8 or UTF-16 and choose it again.") }
-        require('\u0000' !in text && timing.containsMatchIn(text.replace("\r\n", "\n"))) {
-            "The selected file does not contain readable SRT subtitle timings."
+        } catch (_: Exception) { throw IllegalArgumentException("Save this subtitle as UTF-8 or UTF-16 and choose it again.") }
+        val normalized = text.replace("\r\n", "\n")
+        val valid = when (extension) {
+            "srt" -> timing.containsMatchIn(normalized)
+            "vtt" -> normalized.trimStart().startsWith("WEBVTT") &&
+                Regex("(?m)^\\s*(?:\\d{2,}:)?\\d{2}:\\d{2}\\.\\d{3}\\s*-->\\s*(?:\\d{2,}:)?\\d{2}:\\d{2}\\.\\d{3}.*$").containsMatchIn(normalized)
+            "ass", "ssa" -> normalized.contains("[Events]", ignoreCase = true) &&
+                Regex("(?im)^Dialogue:\\s*[^,]*,\\d+:\\d{2}:\\d{2}\\.\\d{2},\\d+:\\d{2}:\\d{2}\\.\\d{2},").containsMatchIn(normalized)
+            "sub" -> Regex("(?m)^\\{\\d+}\\{\\d+}.+").containsMatchIn(normalized)
+            else -> false
+        }
+        require('\u0000' !in text && valid) {
+            "The selected file does not contain readable ${extension.uppercase(java.util.Locale.ROOT)} subtitle timings. Binary SUB files need their matching IDX file; choose SRT or VTT instead."
         }
         return text
     }

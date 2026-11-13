@@ -17,6 +17,11 @@ data class ConceptThemeProfile(
 ) {
     companion object {
         fun forTheme(theme: ThemeSpec): ConceptThemeProfile? = when (theme) {
+            ThemeSpec.CAMEO_GLASS -> ConceptThemeProfile("cameo_tv_theme_previews/01-glass.png", contentLeft=174, contentRight=17, railWidth=153)
+            ThemeSpec.CAMEO_CINEMA -> ConceptThemeProfile("cameo_tv_theme_previews/02-cinema.png", contentLeft=34, contentRight=34, railWidth=0, headerHeight=55)
+            ThemeSpec.CAMEO_SLATE -> ConceptThemeProfile("cameo_tv_theme_previews/03-slate.png", contentLeft=174, contentRight=16, railWidth=150)
+            ThemeSpec.CAMEO_PEARL -> ConceptThemeProfile("cameo_tv_theme_previews/04-pearl.png", contentLeft=25, contentRight=25, railWidth=0, headerHeight=43)
+            ThemeSpec.CAMEO_AURORA -> ConceptThemeProfile("cameo_tv_theme_previews/05-aurora.png", contentLeft=25, contentRight=25, railWidth=0, headerHeight=54)
             ThemeSpec.GLASS -> ConceptThemeProfile("theme_previews/01-glass-apple-tv.png",
                 railX=16,railY=17,railWidth=120,railHeight=504,logoX=46,logoY=43,logoWidth=58,logoHeight=36,
                 navX=23,navY=102,navWidth=106,navHeight=38,navStep=48,navIconInset=14,contentLeft=154,

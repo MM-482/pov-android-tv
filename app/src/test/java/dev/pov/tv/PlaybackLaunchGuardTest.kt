@@ -1,5 +1,7 @@
 package dev.pov.tv
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.DialogInterface
@@ -26,7 +28,7 @@ import java.util.concurrent.TimeUnit
 
 /** Exercises Main's actual launch callbacks without onCreate, account requests, or a player. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class PlaybackLaunchGuardTest {
     private val identity = PlaybackIdentity("tt1234567", "movie", "Offline fixture")
@@ -49,8 +51,8 @@ class PlaybackLaunchGuardTest {
             (field(fixture.activity, "worker") as ExecutorService).shutdownNow()
             set(fixture.activity, "worker", worker)
 
-            invoke(fixture.activity, "resolve", arrayOf(SourceItem::class.java, PlaybackIdentity::class.java, String::class.java),
-                SourceItem("Old cached result", "offline", infoHash = "a".repeat(40), cached = true), identity, revision)
+            invoke(fixture.activity, "resolve", arrayOf(SourceItem::class.java, PlaybackIdentity::class.java, String::class.java, Boolean::class.javaPrimitiveType!!),
+                SourceItem("Old cached result", "offline", infoHash = "a".repeat(40), cached = true), identity, revision, false)
 
             assertEquals(0, requests)
             assertEquals(0, worker.submissions)
@@ -108,8 +110,8 @@ class PlaybackLaunchGuardTest {
             // Cookie is deliberately unsupported; validation fails before any credential handoff.
             val headers = if (historyFails) emptyMap() else mapOf("Cookie" to "fixture-secret-never-shown")
             invoke(fixture.activity, "play", arrayOf(String::class.java, String::class.java,
-                PlaybackIdentity::class.java, String::class.java, Map::class.java),
-                "https://members.easynews.com/offline-fixture.mkv", identity.title, identity, key, headers)
+                PlaybackIdentity::class.java, String::class.java, Map::class.java, Boolean::class.javaPrimitiveType!!),
+                "https://members.easynews.com/offline-fixture.mkv", identity.title, identity, key, headers, false)
 
             if (startOver) {
                 val dialog = requireNotNull(ShadowAlertDialog.getLatestAlertDialog())
@@ -131,6 +133,7 @@ class PlaybackLaunchGuardTest {
     private fun fixture(): Fixture {
         val controller = Robolectric.buildActivity(MainActivity::class.java)
         val activity = controller.get()
+        shadowOf(requireNotNull(activity.getSystemService(UiModeManager::class.java))).setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
         activity.setTheme(R.style.AppTheme)
         val body = LinearLayout(activity)
         activity.setContentView(body)

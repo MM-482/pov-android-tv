@@ -1,5 +1,7 @@
 package dev.pov.tv
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -28,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Exercises Main's actual async loader and native renderer without onCreate, accounts, or HTTP. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class StudioUpNextIntegrationTest {
     private val expected = PlaybackIdentity("tt0903747", "series", "Series Fixture", 3, 7)
@@ -93,6 +95,7 @@ class StudioUpNextIntegrationTest {
 
     private fun fixture(): Fixture {
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
+        shadowOf(requireNotNull(activity.getSystemService(UiModeManager::class.java))).setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
         activity.setTheme(R.style.AppTheme)
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val marker = TextView(activity).apply { text = "Existing discovery remains usable" }

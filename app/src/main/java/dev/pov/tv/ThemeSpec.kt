@@ -3,7 +3,8 @@ package dev.pov.tv
 import android.content.Context
 
 /**
- * The five visual directions in design/01-cinematic.png through 05-dashboard.png.
+ * Current Cameo TV appearances plus internal definitions needed for preference
+ * migration, mobile palette foundations and historical rendering regressions.
  *
  * Dimensions reproduce the concepts on a 960 x 540 logical canvas. Layout code can
  * scale these values together for other TV sizes while retaining their proportions.
@@ -123,25 +124,38 @@ enum class ThemeSpec(
     PREMIERE("premiere", "Premiere", "Warm cinema light, a quiet rail, and elegant serif typography.", conceptPalette("premiere"), conceptLayout("premiere")),
     ATELIER("atelier", "Atelier", "An ivory canvas, a split feature, and restrained dark focus.", conceptPalette("atelier"), conceptLayout("atelier")),
     HORIZON("horizon", "Horizon", "A slim top navigation, wide artwork, and cyan-violet focus.", conceptPalette("horizon"), conceptLayout("horizon")),
-    STUDIO("studio", "Studio", "A large watching tile, an episode column, and illustrated browse actions.", conceptPalette("studio"), conceptLayout("studio"));
+    STUDIO("studio", "Studio", "A large watching tile, an episode column, and illustrated browse actions.", conceptPalette("studio"), conceptLayout("studio")),
+    CAMEO_GLASS("cameo-glass", "Cameo Glass", "A floating glass rail, blue artwork, and two complete browsing rows.", cameoTvPalette("glass"), cameoTvLayout("glass")),
+    CAMEO_CINEMA("cameo-cinema", "Cameo Cinema", "A warm cinematic feature, gold accents, and a slim top navigation.", cameoTvPalette("cinema"), cameoTvLayout("cinema")),
+    CAMEO_SLATE("cameo-slate", "Cameo Slate", "A charcoal rail, framed feature, and vivid green controls.", cameoTvPalette("slate"), cameoTvLayout("slate")),
+    CAMEO_PEARL("cameo-pearl", "Cameo Pearl", "An ivory canvas, refined serif titles, and a split feature.", cameoTvPalette("pearl"), cameoTvLayout("pearl")),
+    CAMEO_AURORA("cameo-aurora", "Cameo Aurora", "A floating capsule, cyan accents, and a luminous framed feature.", cameoTvPalette("aurora"), cameoTvLayout("aurora"));
 
     val conceptProfile: ConceptThemeProfile? get() = ConceptThemeProfile.forTheme(this)
     val isConcept: Boolean get() = conceptProfile != null
+    val isCameoTv: Boolean get() = id.startsWith("cameo-")
     /** Playback controls always sit on a dark scrim, including the light Atelier appearance. */
-    val playbackAccent: Int get() = if (this == ATELIER) 0xFFF4F6FC.toInt() else palette.accent
+    val playbackAccent: Int get() = if (this == ATELIER || this == CAMEO_PEARL) 0xFFF4F6FC.toInt() else palette.accent
     val previewAsset: String get() = conceptProfile?.previewAsset ?: when (this) {
         CINEMATIC -> "themes/01-cinematic.png"; EDITORIAL -> "themes/02-editorial.png"
         NEON -> "themes/03-neon.png"; CINEMA -> "themes/04-cinema.png"; else -> "themes/05-dashboard.png"
     }
 
     companion object {
-        val selectableThemes: List<ThemeSpec> get() = listOf(GLASS, ESSENTIAL, PREMIERE, ATELIER, HORIZON, STUDIO)
-        /** Unknown or old preferences fall back to the user's selected concept. */
+        val cameoTvThemes: List<ThemeSpec> get() = listOf(CAMEO_GLASS, CAMEO_CINEMA, CAMEO_SLATE, CAMEO_PEARL, CAMEO_AURORA)
+        val selectableThemes: List<ThemeSpec> get() = cameoTvThemes
+        val allSelectableThemes: List<ThemeSpec> get() = cameoTvThemes
+        /** Raw legacy decoder for compatibility; active TV readers use conceptFromId. */
         fun fromId(id: String?): ThemeSpec = entries.firstOrNull { it.id == id } ?: CINEMATIC
 
+        /** Every persisted TV appearance resolves to one of the five current Cameo designs. */
         fun conceptFromId(id: String?): ThemeSpec = when (val saved = entries.firstOrNull { it.id == id }) {
-            CINEMATIC -> ESSENTIAL; EDITORIAL -> ATELIER; NEON -> HORIZON
-            CINEMA -> PREMIERE; DASHBOARD -> STUDIO; null -> GLASS; else -> saved
+            CINEMATIC, ESSENTIAL -> CAMEO_SLATE
+            EDITORIAL, ATELIER -> CAMEO_PEARL
+            NEON, HORIZON -> CAMEO_AURORA
+            CINEMA, PREMIERE -> CAMEO_CINEMA
+            DASHBOARD, STUDIO, GLASS, null -> CAMEO_GLASS
+            else -> saved
         }
     }
 }
@@ -189,10 +203,13 @@ class ThemePreferences(context: Context) {
     private val preferences = context.applicationContext
         .getSharedPreferences("pov_appearance", Context.MODE_PRIVATE)
 
-    fun selected(): ThemeSpec = ThemeSpec.fromId(preferences.getString(KEY, null))
+    fun selected(): ThemeSpec = selectedCameoTv()
 
-    /** Native concept upgrade; legacy readers retain their original round-trip behavior. */
-    fun selectedConcept(): ThemeSpec {
+    /** Compatibility entry point shares the same current-TV migration policy. */
+    fun selectedConcept(): ThemeSpec = selectedCameoTv()
+
+    /** Change only the appearance key; account, playback and mobile preferences are separate. */
+    fun selectedCameoTv(): ThemeSpec {
         val stored = preferences.getString(KEY, null)
         val selected = ThemeSpec.conceptFromId(stored)
         if (stored != selected.id) preferences.edit().putString(KEY, selected.id).apply()
@@ -200,7 +217,7 @@ class ThemePreferences(context: Context) {
     }
 
     fun select(theme: ThemeSpec) {
-        preferences.edit().putString(KEY, theme.id).apply()
+        preferences.edit().putString(KEY, ThemeSpec.conceptFromId(theme.id).id).apply()
     }
 
     private companion object { const val KEY = "theme" }

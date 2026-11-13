@@ -96,7 +96,7 @@ object Net {
             connection.instanceFollowRedirects = false
             connection.requestMethod = method.uppercase()
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("User-Agent", "POV-Standalone-AndroidTV/0.1")
+            connection.setRequestProperty("User-Agent", "Cameo-Android/${dev.pov.tv.BuildConfig.VERSION_NAME}")
             headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
             if (bytes != null) {
                 connection.doOutput = true

@@ -1,5 +1,6 @@
 package dev.pov.tv.data
 
+import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -61,6 +62,8 @@ class AnimeCatalogApi internal constructor(
         { url -> Net.json(url, headers = mapOf("Accept" to "application/vnd.api+json")) },
         trakt::lookupCatalogId
     )
+    constructor(context: Context, trakt: TraktApi) : this(PublicCatalogCache(context)::json,
+        trakt::lookupCatalogId, canonicalDetails = CatalogApi(context)::details)
 
     private data class Cached(val at: Long, val page: AnimePage)
     private val pages = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {

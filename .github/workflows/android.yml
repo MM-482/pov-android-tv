@@ -42,7 +42,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v7
         with:
-          name: pov-debug-apk-${{ github.sha }}
+          name: cameo-debug-apk-${{ github.sha }}
           path: ${{ env.POV_BUILD_OUTPUT }}/outputs/apk/debug/*.apk
           if-no-files-found: error
           compression-level: 0
@@ -52,7 +52,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pov-unit-tests-${{ github.sha }}
+          name: cameo-unit-tests-${{ github.sha }}
           path: |
             ${{ env.POV_BUILD_OUTPUT }}/test-results/testDebugUnitTest/
             ${{ env.POV_BUILD_OUTPUT }}/reports/tests/testDebugUnitTest/
@@ -63,7 +63,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pov-lint-${{ github.sha }}
+          name: cameo-lint-${{ github.sha }}
           path: ${{ env.POV_BUILD_OUTPUT }}/reports/lint-results-debug.*
           if-no-files-found: warn
           retention-days: 14

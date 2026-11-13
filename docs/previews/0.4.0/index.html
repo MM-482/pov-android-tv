@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cameo — Android native appearance previews</title>
+  <style>
+    :root { color-scheme:dark; --bg:#0a0e16; --panel:#141b28; --muted:#a8b5c8; --line:#2b3547; --accent:#8bdafa; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:#eff5fc; background:radial-gradient(ellipse at 10% 0%,#123746 0,transparent 35%),var(--bg); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1460px; margin:auto; padding:48px 28px 80px; }
+    .eyebrow { color:var(--accent); font-size:12px; text-transform:uppercase; letter-spacing:.16em; }
+    h1 { font-size:clamp(32px,5vw,60px); line-height:1.08; letter-spacing:-.04em; margin:12px 0 18px; }
+    .intro { max-width:860px; font-size:19px; color:#c9d5e6; }
+    a { color:var(--accent); text-underline-offset:4px; }
+    .facts { display:flex; flex-wrap:wrap; gap:10px; margin:24px 0; }
+    .pill { border:1px solid #43556d; background:#142536; padding:6px 13px; border-radius:30px; font-size:13px; }
+    .notice { border:1px solid #686044; border-radius:16px; padding:18px 22px; background:#29261a; color:#efe4be; max-width:1080px; margin:24px 0; }
+    .notice strong { color:#fff3c8; }
+    .notice p { margin:0 0 9px; } .notice p:last-child { margin:0; }
+    .toolbar { position:sticky; top:0; z-index:4; padding:14px 0; margin:30px 0 20px; background:#0a0e16ed; backdrop-filter:blur(18px); border-bottom:1px solid var(--line); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .segmented { display:flex; padding:4px; border:1px solid #344258; border-radius:13px; gap:4px; }
+    button { color:#d8e4f4; background:transparent; border:0; padding:10px 16px; min-height:44px; font:inherit; font-size:14px; cursor:pointer; border-radius:9px; }
+    button:hover { background:#273449; }
+    button:focus-visible,a:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
+    button[aria-pressed="true"] { color:#071924; background:var(--accent); }
+    .toolbar .hint { margin-left:auto; color:var(--muted); font-size:13px; }
+    .section-intro { margin:30px 0 26px; max-width:1000px; color:#c4d0e0; }
+    h2 { font-size:28px; letter-spacing:-.025em; margin:0 0 7px; color:#fff; }
+    .study { margin:0 0 42px; padding:24px; background:linear-gradient(145deg,#182233,#111825); border:1px solid var(--line); border-radius:22px; }
+    .study header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:7px; }
+    .study h3 { margin:0; font-size:24px; letter-spacing:-.02em; }
+    .number { display:inline-block; color:var(--accent); font-size:13px; margin-right:11px; letter-spacing:.08em; }
+    .description { color:var(--muted); margin:0 0 20px; }
+    .pair { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+    figure { margin:0; min-width:0; }
+    figcaption { margin-bottom:9px; display:flex; justify-content:space-between; gap:12px; font-size:13px; color:#cfdbeb; }
+    .label { color:#93e2ff; }
+    .image-stage { background:#05080d; border:1px solid #3b485f; border-radius:14px; padding:12px; display:flex; align-items:center; justify-content:center; min-height:160px; }
+    .image-stage button { padding:0; display:block; border-radius:0; line-height:0; max-width:100%; }
+    .image-stage img { display:block; max-width:100%; height:auto; }
+    .mobile .image-stage img { width:390px; }
+    .tv .image-stage img { width:960px; }
+    .scope { font-size:13px; color:#aebbcf; margin:15px 0 0; }
+    .scope strong { color:#d8e4f3; }
+    .linkrow { display:flex; gap:18px; font-size:13px; margin-top:12px; flex-wrap:wrap; }
+    [hidden] { display:none!important; }
+    body[data-view="native"] .pair,body[data-view="concept"] .pair { grid-template-columns:1fr; }
+    body[data-view="native"] figure[data-kind="concept"],body[data-view="concept"] figure[data-kind="native"] { display:none; }
+    body[data-view="native"] .mobile .image-stage img,body[data-view="concept"] .mobile .image-stage img { width:440px; }
+    .footer { color:#a6b3c7; max-width:950px; border-top:1px solid var(--line); padding-top:24px; margin-top:50px; }
+    dialog { width:fit-content; max-width:96vw; max-height:97vh; padding:16px; border:1px solid #63768d; border-radius:18px; color:white; background:#0a111b; }
+    dialog::backdrop { background:#000d; backdrop-filter:blur(8px); }
+    dialog header { display:flex; justify-content:space-between; align-items:center; gap:28px; margin-bottom:10px; }
+    dialog h2 { font-size:16px; margin:0; }
+    dialog img { display:block; max-width:90vw; max-height:82vh; width:auto; height:auto; object-fit:contain; }
+    @media(max-width:700px) { main{padding:30px 14px 50px}.study{padding:16px}.pair{grid-template-columns:1fr}.toolbar .hint{display:none}.study header{align-items:start}.study h3{font-size:21px}figcaption{font-size:12px}.image-stage{padding:8px}.intro{font-size:17px} }
+  </style>
+</head>
+<body data-view="compare">
+<main>
+  <div class="eyebrow">Cameo Android · 0.4.0 preview · native appearance previews</div>
+  <h1>From concept<br>to native app.</h1>
+  <p class="intro">Five mobile themes and five television themes, paired with their original design studies. These images show the real Android view layouts using controlled film data and artwork.</p>
+  <div class="facts"><span class="pill">5 mobile appearances</span><span class="pill">5 Cameo TV appearances</span><span class="pill">Earlier TV selections migrate automatically</span><span class="pill">No connected account imagery</span></div>
+  <div class="notice">
+    <p><strong>These are controlled native test renders, not physical Z Fold 8 or Sony TV screenshots.</strong> They are rendered from Android views by Robolectric at fixed canvas sizes. The source concepts remain unchanged and are shown separately.</p>
+    <p>The layouts use real film titles and catalog artwork. The original studies use fictional films, different artwork and different title lengths. System status and gesture bars are outside these app-canvas renders. Typography and software-rendered image clipping also differ; a pixel-for-pixel match has not been verified.</p>
+  </div>
+  <nav class="toolbar" aria-label="Review controls">
+    <div class="segmented" aria-label="Device category"><button data-device="mobile" aria-pressed="true">Mobile</button><button data-device="tv" aria-pressed="false">Android TV</button></div>
+    <div class="segmented" aria-label="Comparison view"><button data-view="compare" aria-pressed="true">Compare</button><button data-view="native" aria-pressed="false">Native app</button><button data-view="concept" aria-pressed="false">Original concept</button></div>
+    <span class="hint">Select an image to enlarge it.</span>
+  </nav>
+  <section id="mobile-section" aria-labelledby="mobile-heading">
+    <div class="section-intro"><h2 id="mobile-heading">Mobile appearances</h2><div>Glass uses a 390 × 844 canvas; the other four use 390 × 891. These are provisional logical viewports. The Z Fold 8 cover and unfolded layouts also have geometry checks at representative sizes; physical phone testing remains separate.</div></div>
+    <div id="mobile-studies"></div>
+  </section>
+  <section id="tv-section" aria-labelledby="tv-heading" hidden>
+    <div class="section-intro"><h2 id="tv-heading">Television appearances</h2><div>Each native layout uses a 960 × 540 canvas, with a feature area, three initial Continue Watching cards and five initial Discover cards. Additional titles scroll horizontally; account-specific Up Next episodes continue below the first viewport.</div></div>
+    <div id="tv-studies"></div>
+  </section>
+  <div class="footer">
+    <p><strong>What this review establishes:</strong> the native controls, live artwork composition, theme colors and initial browsing geometry can be inspected without exposing private accounts. It does not establish physical-device playback, receiver compatibility or exact visual equivalence.</p>
+    <p><a href="../../../docs/RELEASE_NOTES_0.4.0.md">Preview update notes</a> · <a href="../../../docs/INSTALL_0.4.0.md">Installation instructions</a> · <a href="../../../docs/CAMEO_DESKTOP_ANDROID_PARITY.md">Desktop and Android comparison</a></p>
+    <p>Standalone app made by Mark Mateo, based on the original POV project. These preview files contain controlled fixture content; no connected account images are included.</p>
+  </div>
+</main>
+<dialog id="zoom"><header><h2 id="zoom-title"></h2><button id="close-zoom" aria-label="Close enlarged image">Close ✕</button></header><img id="zoom-image" alt=""></dialog>
+<script>
+const themes = [
+  {id:'01',name:'Glass',slug:'glass',description:'Cool blue artwork, translucent navigation and soft white primary actions.',notes:'The mobile hero uses compact reference-width actions; television keeps its floating rail and two browsing rows.'},
+  {id:'02',name:'Cinema',slug:'cinema',description:'Warm gold accents, condensed feature titles and a dark cinematic canvas.',notes:'Live title length changes line breaks. Gold controls and top navigation retain the warm cinema direction.'},
+  {id:'03',name:'Slate',slug:'slate',description:'Charcoal panels, vivid green controls and a framed feature.',notes:'The native layout keeps the framed feature and green navigation. Hardware outline clipping needs physical-device confirmation.'},
+  {id:'04',name:'Pearl',slug:'pearl',description:'Ivory surfaces, blue controls, serif headings and restrained separators.',notes:'The bundled Instrument Serif is narrower and thinner than the generated concept lettering. This remains a visible typography difference.'},
+  {id:'05',name:'Aurora',slug:'aurora',description:'Cyan controls, violet atmosphere and a floating capsule navigation.',notes:'The native gradient and capsule are real views; live artwork does not contain the fictional purple-planet scene.'}
+];
+function addStudies(device) {
+  const host=document.getElementById(device+'-studies');
+  for (const item of themes) {
+    const native=(device==='tv'?'tv/':'mobile/')+item.id+'-'+item.slug+'-native-'+(device==='tv'?'960x540':item.slug==='glass'?'390x844':'390x891')+'.png';
+    const concept='../../../design/cameo-'+(device==='tv'?'android':'mobile')+'-concepts-2026-11-02/'+item.id+'-cameo-'+(device==='mobile'?'mobile-':'')+item.slug+'.png';
+    const article=document.createElement('article'); article.className='study '+device;
+    const header=document.createElement('header'); const heading=document.createElement('h3'); heading.innerHTML='<span class="number">'+item.id+'</span>'+item.name; header.append(heading); article.append(header);
+    const description=document.createElement('p'); description.className='description'; description.textContent=item.description; article.append(description);
+    const pair=document.createElement('div'); pair.className='pair';
+    for(const source of [{kind:'native',label:'Native Android test render',path:native},{kind:'concept',label:'Original generated concept',path:concept}]) {
+      const figure=document.createElement('figure'); figure.dataset.kind=source.kind;
+      const caption=document.createElement('figcaption'); const label=document.createElement('span'); label.className='label'; label.textContent=source.label;
+      const kind=document.createElement('span'); kind.textContent=source.kind==='native'?'Controlled fixture':'Design target'; caption.append(label,kind);
+      const stage=document.createElement('div'); stage.className='image-stage'; const button=document.createElement('button'); button.setAttribute('aria-label','Enlarge '+item.name+' '+device+' '+source.label);
+      const image=document.createElement('img'); image.src=source.path; image.alt=item.name+' '+device+' — '+source.label; image.loading='lazy';
+      button.append(image); stage.append(button); figure.append(caption,stage); pair.append(figure);
+      button.addEventListener('click',()=>{ document.getElementById('zoom-title').textContent=item.name+' · '+device+' · '+source.label; const full=document.getElementById('zoom-image'); full.src=source.path;full.alt=image.alt;document.getElementById('zoom').showModal(); });
+    }
+    article.append(pair);
+    const note=document.createElement('p');note.className='scope';note.textContent=item.notes;article.append(note);
+    const links=document.createElement('div');links.className='linkrow';for(const source of [{label:'Open native PNG',path:native},{label:'Open unchanged concept PNG',path:concept}]){const a=document.createElement('a');a.href=source.path;a.textContent=source.label;links.append(a)}article.append(links);
+    host.append(article);
+  }
+}
+addStudies('mobile');addStudies('tv');
+document.querySelectorAll('button[data-device]').forEach(button=>button.addEventListener('click',()=>{
+  document.querySelectorAll('button[data-device]').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+  document.getElementById('mobile-section').hidden=button.dataset.device!=='mobile';document.getElementById('tv-section').hidden=button.dataset.device!=='tv';
+}));
+document.querySelectorAll('button[data-view]').forEach(button=>button.addEventListener('click',()=>{
+  document.body.dataset.view=button.dataset.view;document.querySelectorAll('button[data-view]').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+}));
+document.getElementById('close-zoom').addEventListener('click',()=>document.getElementById('zoom').close());
+document.getElementById('zoom').addEventListener('click',event=>{if(event.target===document.getElementById('zoom'))event.target.close()});
+</script>
+</body>
+</html>

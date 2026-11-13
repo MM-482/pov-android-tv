@@ -1,5 +1,7 @@
 package dev.pov.tv
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -13,12 +15,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.ExecutorService
 
 /** Actual native screen behavior, with no account/network/native-player startup. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-mdpi")
+@Config(sdk = [28], qualifiers = "w960dp-h540dp-land-television-mdpi")
 class UiIntegrationTest {
     private class Credentials : ProviderCredentials {
         private val values = mutableMapOf("realdebrid.token" to "test-token", "realdebrid.account_revision" to "old")
@@ -34,8 +37,8 @@ class UiIntegrationTest {
     @Test fun `provider version screen preserves every actual file as a separate remote target`() {
         val (activity, body, _) = screen()
         try {
-            invoke(activity, "providerVersions", arrayOf(String::class.java, List::class.java, PlaybackIdentity::class.java, String::class.java, String::class.java),
-                "realdebrid", variants, movie, "transfer:9", "old")
+            invoke(activity, "providerVersions", arrayOf(String::class.java, List::class.java, PlaybackIdentity::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType!!),
+                "realdebrid", variants, movie, "transfer:9", "old", false)
             val rows = descendants(body).filterIsInstance<TvChoiceRow>()
             assertEquals(3, rows.size)
             assertEquals(variants.map { "provider-file:realdebrid:${it.id}" }, rows.map { it.tag })
@@ -49,8 +52,8 @@ class UiIntegrationTest {
         val (activity, body, credentials) = screen()
         try {
             credentials.putAll(mapOf("realdebrid.token" to "new-token", "realdebrid.account_revision" to "new"))
-            invoke(activity, "providerVersions", arrayOf(String::class.java, List::class.java, PlaybackIdentity::class.java, String::class.java, String::class.java),
-                "realdebrid", variants, movie, "transfer:9", "old")
+            invoke(activity, "providerVersions", arrayOf(String::class.java, List::class.java, PlaybackIdentity::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType!!),
+                "realdebrid", variants, movie, "transfer:9", "old", false)
             assertTrue(descendants(body).filterIsInstance<TvChoiceRow>().isEmpty())
             assertTrue(descendants(body).filterIsInstance<TextView>().any { it.text.toString().contains("account changed") })
         } finally { shutdown(activity) }
@@ -59,8 +62,8 @@ class UiIntegrationTest {
     @Test fun `already rendered file cannot be played after replacing its provider account`() {
         val (activity, body, credentials) = screen()
         try {
-            invoke(activity, "providerVersions", arrayOf(String::class.java, List::class.java, PlaybackIdentity::class.java, String::class.java, String::class.java),
-                "realdebrid", variants, movie, "transfer:9", "old")
+            invoke(activity, "providerVersions", arrayOf(String::class.java, List::class.java, PlaybackIdentity::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType!!),
+                "realdebrid", variants, movie, "transfer:9", "old", false)
             val row = descendants(body).filterIsInstance<TvChoiceRow>()[1]
             credentials.putAll(mapOf("realdebrid.token" to "new-token", "realdebrid.account_revision" to "new"))
             row.performClick()
@@ -85,7 +88,7 @@ class UiIntegrationTest {
         try {
             val files = listOf(CloudFile(3, "Example.1080p.mkv", 200), CloudFile(9, "Example.2160p.mkv", 400))
             val prepared = PreparedSource.Files(CloudFolder(42, "torrents", "Example", true, files), files, movie, 9)
-            invoke(activity, "preparedFiles", arrayOf(PreparedSource.Files::class.java), prepared)
+            invoke(activity, "preparedFiles", arrayOf(PreparedSource.Files::class.java, Boolean::class.javaPrimitiveType!!), prepared, false)
             val rows = descendants(body).filterIsInstance<TvChoiceRow>()
             assertEquals(2, rows.size)
             assertEquals(listOf(TvChoiceKeys.file("torrents", 42, 3), TvChoiceKeys.file("torrents", 42, 9)), rows.map { it.tag })
@@ -95,6 +98,7 @@ class UiIntegrationTest {
 
     private fun screen(): Triple<MainActivity, LinearLayout, Credentials> {
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
+        shadowOf(requireNotNull(activity.getSystemService(UiModeManager::class.java))).setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
         activity.setTheme(R.style.AppTheme)
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(activity).apply { addView(body) }

@@ -1,15 +1,31 @@
 package dev.pov.tv.data
 
+import android.content.Context
 import org.json.JSONObject
 import java.net.URI
 
 /** Public Cinemeta metadata, with no embedded third-party account credentials. Call on a worker. */
-class CatalogApi internal constructor(private val publicJson: (String) -> JSONObject) {
+class CatalogApi private constructor(private val diskCache: PublicCatalogCache?, private val publicJson: (String) -> JSONObject) {
+    internal constructor(publicJson: (String) -> JSONObject) : this(null, publicJson)
     constructor() : this(Net::publicJson)
-    fun popular(type: String, skip: Int = 0): List<MediaItemData> {
+    constructor(context: Context) : this(PublicCatalogCache(context))
+    private constructor(cache: PublicCatalogCache) : this(cache, cache::json)
+    val lastCacheRead: PublicCatalogCacheReply? get() = diskCache?.lastRead
+    fun cacheInfo(): PublicCatalogCacheInfo = diskCache?.info() ?: PublicCatalogCacheInfo(0, 0, 200, 24 * 1024 * 1024L)
+    fun clearCache() { diskCache?.clear() }
+    fun popular(type: String, skip: Int = 0, genre: String = ""): List<MediaItemData> {
         requireType(type)
         require(skip >= 0) { "The catalog offset cannot be negative." }
-        return catalog("$BASE/catalog/$type/top/skip=$skip.json", type)
+        val suffix = genre.trim().takeUnless { it.isBlank() || it == "All" || it == "All genres" }?.also {
+            require(it in genres(type)) { "Choose a supported catalog genre." }
+        }?.let { "&genre=${Net.encode(it)}" }.orEmpty()
+        return catalog("$BASE/catalog/$type/top/skip=$skip$suffix.json", type)
+    }
+
+    /** Official Cinemeta top-catalog manifest genre options, verified November 2, 2026. */
+    fun genres(type: String): List<String> {
+        requireType(type)
+        return MOVIE_GENRES + if (type == "series") listOf("Reality-TV", "Talk-Show", "Game-Show") else emptyList()
     }
 
     fun search(query: String, type: String): List<MediaItemData> {
@@ -99,5 +115,7 @@ class CatalogApi internal constructor(private val publicJson: (String) -> JSONOb
     private companion object {
         const val BASE = "https://v3-cinemeta.strem.io"
         val IMDB_ID = Regex("tt[0-9]{5,12}")
+        val MOVIE_GENRES = listOf("Action", "Adventure", "Animation", "Biography", "Comedy", "Crime", "Documentary", "Drama",
+            "Family", "Fantasy", "History", "Horror", "Mystery", "Romance", "Sci-Fi", "Sport", "Thriller", "War", "Western")
     }
 }

@@ -68,6 +68,10 @@ object InAppPlaybackSession {
     /** Preserved for the existing decoder/PCM instrumentation audit. UI uses currentPlayer. */
     val playerOrNull: ExoPlayer? get() = player as? ExoPlayer
     val currentPlayer: Player? get() = player
+    val currentIdentity: PlaybackIdentity? get() = identity
+    val currentPlaybackKey: String get() = sourceKey
+    internal val hasProtectedHeaders: Boolean get() = sourceHeaders.isNotEmpty() ||
+        runCatching { java.net.URI(sourceUrl).rawUserInfo != null }.getOrDefault(true)
     internal fun ownsVideoTarget(view: PlayerView): Boolean = targetView?.get() === view && view.player === player
     internal var videoSurfaceLossCount = 0
         private set
@@ -207,7 +211,8 @@ object InAppPlaybackSession {
     fun addListener(listener: () -> Unit) { listeners += listener }
     fun removeListener(listener: () -> Unit) { listeners -= listener }
 
-    fun prepareRequest(url: String, headers: Map<String, String>): String = ProtectedPlaybackRequests.add(url, headers)
+    fun prepareRequest(url: String, headers: Map<String, String>): String = if(ProtectedPlaybackRequests.approved(url))
+        ProtectedPlaybackRequests.add(url, headers) else ScopedPlaybackRequests.add(url,headers)
 
     /** Returns false for an invalid link without disturbing an existing session. */
     internal fun start(context: Context, intent: Intent, saved: Bundle? = null): Boolean {
@@ -215,9 +220,9 @@ object InAppPlaybackSession {
         startFailure = null
         val address = intent.getStringExtra("url").orEmpty()
         val uri = try { Uri.parse(address) } catch (_: RuntimeException) { null }
-        if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) return false
+        if (uri == null || !MediaAddressPolicy.accepts(address)) return false
         val requestToken = intent.getStringExtra("playback_request")?.takeIf(String::isNotBlank)
-        val request = requestToken?.let(ProtectedPlaybackRequests::take)
+        val request = requestToken?.let { ProtectedPlaybackRequests.take(it) ?: ScopedPlaybackRequests.take(it) }
         if ((requestToken != null && (request == null || request.url != address)) ||
             (saved?.getBoolean("protectedPlayback", false) == true && request == null)) {
             startFailure = "Reopen this protected source from the library to refresh its credentials."
@@ -262,13 +267,22 @@ object InAppPlaybackSession {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         mediaSession = MediaSession.Builder(application!!, exo).setSessionActivity(openApp).build()
         configureSessionListener(exo)
-        exo.setMediaItem(MediaItem.Builder().setUri(address)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build(), position)
+        val captions=runCatching{CaptionSessionStore(application!!).restore(identity,sourceKey)}.getOrElse {
+            engineNotice="Saved subtitle choices could not be read. They have been preserved; you can still select subtitles for this video."
+            null
+        }
+        val item=MediaItem.Builder().setUri(address).setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+        captions?.configuration?.let{item.setSubtitleConfigurations(listOf(it))}
+        exo.setMediaItem(item.build(), position)
         val initialTracks = parameters ?: exo.trackSelectionParameters.buildUpon()
             .setPreferredTextLanguage(preferences.subtitleLanguage)
             .setSelectUndeterminedTextLanguage(false).build()
-        exo.trackSelectionParameters = if (exo is ExoPlayer) Media3DecoderPolicy.trackParameters(initialTracks) else initialTracks
+        val captionTracks=if(captions!=null)initialTracks.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,!captions.enabled)
+            .apply{captions.configuration?.let{setPreferredTextLanguage(it.language);setSelectUndeterminedTextLanguage(true)}}.build()else initialTracks
+        exo.trackSelectionParameters = if (exo is ExoPlayer) Media3DecoderPolicy.trackParameters(captionTracks) else captionTracks
         exo.prepare()
+        if(exo is LibVlcPlayer&&captions!=null)exo.restoreSubtitleDelay(captions.offsetMicros)
+        exo.setPlaybackSpeed(saved?.getFloat("speed",1f)?.coerceIn(.5f,2f)?:1f)
         exo.playWhenReady = shouldPlay
         restartCheckpoint()
         notifyChanged()
@@ -310,7 +324,8 @@ object InAppPlaybackSession {
         if (sourceHeaders.isNotEmpty()) {
             val headers = sourceHeaders.toMap()
             builder.setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(application!!,
-                DataSource.Factory { ProtectedHttpDataSource(headers) })))
+                DataSource.Factory { if(ProtectedPlaybackRequests.approved(sourceUrl))ProtectedHttpDataSource(headers)
+                    else OriginBoundHttpDataSource(sourceUrl,headers) })))
         }
         return builder
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
@@ -362,6 +377,7 @@ object InAppPlaybackSession {
                     volumeBoost.resetGain()
                     targetView?.get()?.keepScreenOn = false
                     handler.removeCallbacks(checkpoint)
+                    if(CameoPlaybackQueue.hasNext())handler.post { if(isCurrent(exo)&&exo.playbackState==Player.STATE_ENDED)CameoPlaybackQueue.onPlaybackEnded() }
                 }
                 notifyChanged()
             }
@@ -409,8 +425,11 @@ object InAppPlaybackSession {
     }
 
     fun stop() = stopInternal(notify = true)
+    internal fun pauseForSleepTimer() {resumeAfterBackground=false;backgroundPause=false;player?.pause();notifyChanged()}
+    internal fun rememberSubtitleEnabled(enabled:Boolean) {application?.let{app->runCatching{CaptionSessionStore(app).setEnabled(identity,sourceKey,enabled)}}}
 
     private fun stopInternal(notify: Boolean) {
+        if(notify) { PlaybackSleepTimer.cancel(); CameoPlaybackQueue.clear() }
         val exo = player
         if (exo != null) {
             saveLocal()
@@ -435,6 +454,7 @@ object InAppPlaybackSession {
     }
 
     internal fun saveState(out: Bundle) {
+        out.putFloat("speed",player?.playbackParameters?.speed?:1f)
         val exo = player ?: return
         out.putLong("position", exo.currentPosition.coerceAtLeast(0))
         out.putBoolean("playWhenReady", exo.playWhenReady && exo.playbackState != Player.STATE_ENDED)
@@ -457,7 +477,13 @@ object InAppPlaybackSession {
     internal fun loadSubtitle(uri: Uri, displayName: String, language: String?, mimeType: String = MimeTypes.APPLICATION_SUBRIP): Boolean {
         val current = player ?: return false
         if (uri.scheme != "file" && uri.scheme != "content") return false
-        if (current is LibVlcPlayer) return current.addSubtitle(uri)
+        if (current is LibVlcPlayer) {
+            val loaded = current.addSubtitle(uri)
+            if (loaded) {
+                rememberCaption(uri, displayName, language, mimeType, current.subtitleDelayMicros)
+            }
+            return loaded
+        }
         val item = current.currentMediaItem ?: return false
         val external = MediaItem.SubtitleConfiguration.Builder(uri)
             .setMimeType(mimeType).setLabel(displayName.take(160))
@@ -469,7 +495,13 @@ object InAppPlaybackSession {
             .setPreferredTextLanguage(language).setSelectUndeterminedTextLanguage(true).build()
         current.setMediaItem(item.buildUpon().setSubtitleConfigurations(listOf(external)).build(), position)
         current.prepare(); current.playWhenReady = playing
+        rememberCaption(uri,displayName,language,mimeType,0)
         return true
+    }
+    private fun rememberCaption(uri:Uri,name:String,language:String?,mime:String,offset:Long) {
+        val app=application?:return
+        if(!runCatching{CaptionSessionStore(app).remember(identity,sourceKey,uri,name,language,mime,offset)}.getOrDefault(false))
+            engineNotice="Subtitle loaded for this session. Its saved preference could not be updated."
     }
 
     internal fun setVolumeBoostGain(db: Int): VolumeBoostState {
@@ -550,6 +582,8 @@ object InAppPlaybackSession {
         catch (_: Exception) { /* Preserve playback if local storage is unavailable. */ }
     }
     private fun sync(action: String) {
+        // Add-on and server IDs/episode aliases are not verified external tracker identities.
+        if(identity?.catalogNamespace?.isNotBlank()==true || identity?.imdbId?.matches(Regex("tt[0-9]+"))!=true)return
         if (error is VideoCompatibilityException) return
         val media = identity ?: return
         val exo = player ?: return

@@ -32,8 +32,8 @@ class ProviderHubTest {
     private val movie = PlaybackIdentity("tt1234567", "movie", "Example")
     private val source = SourceItem("Example", "Test", infoHash = "a".repeat(40))
 
-    @Test fun `provider list exactly matches original POV playback services`() {
-        assertEquals(setOf("torbox", "realdebrid", "alldebrid", "premiumize", "offcloud", "easynews"), ProviderHub.SPECS.map { it.id }.toSet())
+    @Test fun `provider list preserves POV playback services and adds desktop Cameo providers`() {
+        assertEquals(setOf("torbox", "realdebrid", "alldebrid", "premiumize", "offcloud", "debridlink", "putio", "easynews"), ProviderHub.SPECS.map { it.id }.toSet())
         assertTrue(ProviderHub.SPECS.single { it.id == "easynews" }.experimental)
     }
 

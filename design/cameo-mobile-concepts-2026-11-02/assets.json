@@ -1,0 +1,82 @@
+{
+  "title": "Cameo Android mobile - five theme references",
+  "date": "2026-11-02",
+  "status": "Visual references for later one-to-one implementation; not implemented app screenshots",
+  "generator": "Built-in image_gen",
+  "platform": "Android mobile touchscreen portrait",
+  "comparison": "Match each reference at its recorded canvas dimensions. UI matching must be verified using actual app screenshots before completion is claimed.",
+  "content": "Original illustrative movie art, fictional titles and sample viewing progress; no connected accounts",
+  "tvGallery": "../cameo-android-concepts-2026-11-02/index.html",
+  "assets": [
+    {
+      "id": "01",
+      "name": "Glass",
+      "file": "01-cameo-mobile-glass.png",
+      "width": 852,
+      "height": 1846,
+      "description": "Cool ink blue, restrained frosted surfaces, immersive portrait feature art and bottom navigation.",
+      "palette": [
+        "#0B1728",
+        "#314E6A",
+        "#87C8FF",
+        "#F5F8FC"
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Cinema",
+      "file": "02-cameo-mobile-cinema.png",
+      "width": 830,
+      "height": 1896,
+      "description": "Matte black, champagne highlights, condensed editorial titles and warm cinematic art.",
+      "palette": [
+        "#080807",
+        "#D3AC70",
+        "#E6BE84",
+        "#F9F3E6"
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Slate",
+      "file": "03-cameo-mobile-slate.png",
+      "width": 830,
+      "height": 1896,
+      "description": "Graphite surfaces, emerald accents, compact featured panel and practical content shelves.",
+      "palette": [
+        "#1B2025",
+        "#2A3036",
+        "#00C986",
+        "#F4F6F7"
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Pearl",
+      "file": "04-cameo-mobile-pearl.png",
+      "width": 830,
+      "height": 1896,
+      "description": "Light ivory gallery, dark editorial typography and slate blue touch actions.",
+      "palette": [
+        "#F8F4EF",
+        "#24292D",
+        "#315779",
+        "#81A1BF"
+      ]
+    },
+    {
+      "id": "05",
+      "name": "Aurora",
+      "file": "05-cameo-mobile-aurora.png",
+      "width": 830,
+      "height": 1896,
+      "description": "Midnight violet, restrained teal atmosphere, cyan actions and rounded navigation capsules.",
+      "palette": [
+        "#0F1024",
+        "#24143C",
+        "#13DBE0",
+        "#EDEFFB"
+      ]
+    }
+  ]
+}

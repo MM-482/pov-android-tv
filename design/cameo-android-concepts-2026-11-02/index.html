@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Cameo — Android TV concepts</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#f2f3f8;background:#101116;color-scheme:dark}
+    *{box-sizing:border-box}body{margin:0}button,a{-webkit-tap-highlight-color:transparent}a{color:#b8d6ff;text-underline-offset:4px}button{font:inherit}button:focus-visible,a:focus-visible{outline:3px solid #9cc9ff;outline-offset:5px}
+    .wrap{max-width:1440px;margin:auto;padding:58px 40px 44px}.eyebrow{font-size:12px;letter-spacing:.18em;color:#a8b7ce;text-transform:uppercase}h1{font-size:clamp(36px,5vw,70px);font-weight:550;letter-spacing:-.045em;margin:15px 0 20px}h1 span{color:#9297a7;font-weight:400}.intro{font-size:18px;line-height:1.65;max-width:860px;color:#b8becd}
+    .note{display:inline-block;border:1px solid #343a48;border-radius:30px;padding:8px 14px;font-size:12px;letter-spacing:.025em;color:#c1cee3}.jump{display:flex;gap:10px;flex-wrap:wrap;margin:28px 0 35px}.jump a{text-decoration:none;border:1px solid #303543;border-radius:10px;padding:12px 18px;color:#dce3f0;background:#191c25}.jump a:hover{border-color:#93b7ef;background:#222735}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:26px}.concept{scroll-margin-top:24px;border:1px solid #303541;background:#181b23;border-radius:18px;overflow:hidden}.concept:first-child{grid-column:1/-1}.preview{border:0;padding:0;width:100%;display:block;background:#0d1018;cursor:zoom-in}.preview img{width:100%;height:auto;display:block;aspect-ratio:1672/941}.caption{padding:22px 24px 24px}.caption-top{display:flex;justify-content:space-between;align-items:center;gap:15px}.caption h2{font-size:24px;letter-spacing:-.025em;margin:0;font-weight:550}.number{font-size:12px;font-weight:450;letter-spacing:.1em;color:#9ba7be;margin-right:10px}.caption p{font-size:15px;line-height:1.65;color:#afb7ca;margin:12px 0 15px}.palette{display:flex;gap:7px}.palette i{height:14px;width:14px;border-radius:50%;border:1px solid #ffffff40;display:block;background:var(--swatch)}.view{font-size:12px;color:#9ba7be;white-space:nowrap}footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:15px;padding-top:35px;color:#939bad;font-size:13px}footer nav{display:flex;gap:20px}footer p{margin:0}
+    dialog{border:1px solid #495267;background:#10131b;color:#eef3ff;width:min(96vw,1700px);max-width:none;padding:14px;border-radius:15px}dialog::backdrop{background:#03050bea;backdrop-filter:blur(8px)}.dialog-head{display:flex;justify-content:space-between;align-items:center;padding:4px 5px 15px;gap:14px}.dialog-head h2{margin:0;font-size:18px;font-weight:500}.dialog-controls{display:flex;gap:9px}.dialog-controls button{border:1px solid #465068;background:#222a3b;color:#eef3ff;padding:9px 14px;border-radius:8px;cursor:pointer}.dialog-image{display:block;width:100%;height:auto;max-height:78vh;object-fit:contain}.dialog-hint{color:#a5afc3;font-size:12px;padding:5px;margin-bottom:0}
+    @media(max-width:800px){.wrap{padding:32px 18px}.grid{grid-template-columns:1fr}.concept:first-child{grid-column:auto}.caption{padding:18px}.view{display:none}.dialog-head{align-items:flex-start;flex-direction:column}.dialog-controls{width:100%;justify-content:flex-end}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="eyebrow">Cameo / Android TV / November 2026</div>
+    <h1>One app. <span>Five directions.</span></h1>
+    <p class="intro">A new visual identity for Cameo on Android TV. Compare five treatments of the familiar featured title, Continue Watching, discovery shelves and remote navigation.</p>
+    <span class="note">Visual concepts · Illustrative content · Not implemented screenshots</span>
+    <nav class="jump" aria-label="Jump to concept">
+      <a href="#glass">01 Glass</a><a href="#cinema">02 Cinema</a><a href="#slate">03 Slate</a><a href="#pearl">04 Pearl</a><a href="#aurora">05 Aurora</a>
+    </nav>
+    <div class="grid">
+      <article class="concept" id="glass" data-concept="01">
+        <button class="preview" data-index="0" aria-label="Enlarge concept 1, Glass"><img src="01-cameo-glass.png" alt="Cameo Glass concept: cool blue translucent sidebar, large astronaut backdrop, bright focused Explore action and rounded discovery cards."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">01</span>Glass</h2><span class="view">Select image to enlarge ↗</span></div><p>Cool blue glass, an immersive backdrop and a spacious sidebar. A polished, cinematic TV direction with a bright focus state.</p><div class="palette" aria-label="Ink blue, steel blue, ice blue and white"><i style="--swatch:#0b1728"></i><i style="--swatch:#314e6a"></i><i style="--swatch:#87c8ff"></i><i style="--swatch:#f5f8fc"></i></div></div>
+      </article>
+      <article class="concept" id="cinema" data-concept="02">
+        <button class="preview" data-index="1" aria-label="Enlarge concept 2, Cinema"><img src="02-cameo-cinema.png" alt="Cameo Cinema concept: black and champagne interface, top navigation, dramatic film title and warm sunset backdrop."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">02</span>Cinema</h2><span class="view">Select image to enlarge ↗</span></div><p>Matte black and champagne, dramatic titles and top navigation. A warm, understated movie theater feel.</p><div class="palette" aria-label="Black, champagne, amber and ivory"><i style="--swatch:#080807"></i><i style="--swatch:#d3ac70"></i><i style="--swatch:#e6be84"></i><i style="--swatch:#f9f3e6"></i></div></div>
+      </article>
+      <article class="concept" id="slate" data-concept="03">
+        <button class="preview" data-index="2" aria-label="Enlarge concept 3, Slate"><img src="03-cameo-slate.png" alt="Cameo Slate concept: practical graphite sidebar, emerald focused Explore button and compact featured panel over content shelves."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">03</span>Slate</h2><span class="view">Select image to enlarge ↗</span></div><p>Graphite surfaces and emerald focus. A familiar, uncluttered streaming layout with a compact featured panel.</p><div class="palette" aria-label="Graphite, charcoal, emerald and white"><i style="--swatch:#1b2025"></i><i style="--swatch:#2a3036"></i><i style="--swatch:#00c986"></i><i style="--swatch:#f4f6f7"></i></div></div>
+      </article>
+      <article class="concept" id="pearl" data-concept="04">
+        <button class="preview" data-index="3" aria-label="Enlarge concept 4, Pearl"><img src="04-cameo-pearl.png" alt="Cameo Pearl concept: light ivory background, dark editorial serif typography, blue focus and framed split hero artwork."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">04</span>Pearl</h2><span class="view">Select image to enlarge ↗</span></div><p>A light ivory gallery with editorial typography and a split hero. Quiet, airy and distinctly different from the dark themes.</p><div class="palette" aria-label="Ivory, charcoal, slate blue and mist blue"><i style="--swatch:#f8f4ef"></i><i style="--swatch:#24292d"></i><i style="--swatch:#315779"></i><i style="--swatch:#81a1bf"></i></div></div>
+      </article>
+      <article class="concept" id="aurora" data-concept="05">
+        <button class="preview" data-index="4" aria-label="Enlarge concept 5, Aurora"><img src="05-cameo-aurora.png" alt="Cameo Aurora concept: midnight violet and cyan, floating top navigation, panoramic astronaut hero and subtly outlined content cards."></button>
+        <div class="caption"><div class="caption-top"><h2><span class="number">05</span>Aurora</h2><span class="view">Select image to enlarge ↗</span></div><p>Midnight violet, restrained teal glow and floating top navigation. A futuristic direction that keeps the content in focus.</p><div class="palette" aria-label="Midnight, violet, aqua and pale white"><i style="--swatch:#0f1024"></i><i style="--swatch:#24143c"></i><i style="--swatch:#13dbe0"></i><i style="--swatch:#edeffb"></i></div></div>
+      </article>
+    </div>
+    <footer><p>Made for Mark Mateo · Concept review only</p><nav aria-label="Design files"><a href="assets.json">Asset manifest</a><a href="prompts.json">Generation prompts</a><a href="README.md">Read me</a></nav></footer>
+  </main>
+  <dialog id="viewer" aria-labelledby="viewer-title">
+    <div class="dialog-head"><h2 id="viewer-title"></h2><div class="dialog-controls"><button id="previous" aria-label="Previous concept">← Previous</button><button id="next" aria-label="Next concept">Next →</button><button id="close">Close ×</button></div></div>
+    <img class="dialog-image" id="viewer-image" alt="">
+    <p class="dialog-hint">Arrow keys compare concepts · Escape closes · These are generated visual studies, not app screenshots.</p>
+  </dialog>
+  <script>
+    (() => {
+      const previews = [...document.querySelectorAll('.preview')];
+      const viewer = document.querySelector('#viewer');
+      const title = document.querySelector('#viewer-title');
+      const image = document.querySelector('#viewer-image');
+      let selected = 0;
+      function show(index) {
+        selected = (index + previews.length) % previews.length;
+        const preview = previews[selected];
+        const source = preview.querySelector('img');
+        title.textContent = preview.closest('.concept').querySelector('h2').textContent.replace(/^(\d{2})/, '$1 / ');
+        image.src = source.getAttribute('src');
+        image.alt = source.alt;
+      }
+      previews.forEach((preview, index) => preview.addEventListener('click', () => {show(index); viewer.showModal();}));
+      document.querySelector('#previous').addEventListener('click', () => show(selected - 1));
+      document.querySelector('#next').addEventListener('click', () => show(selected + 1));
+      document.querySelector('#close').addEventListener('click', () => viewer.close());
+      viewer.addEventListener('keydown', event => {
+        if (event.key === 'ArrowRight') {event.preventDefault();show(selected + 1);}
+        if (event.key === 'ArrowLeft') {event.preventDefault();show(selected - 1);}
+      });
+      viewer.addEventListener('click', event => {if(event.target === viewer && (event.clientX < viewer.getBoundingClientRect().left || event.clientX > viewer.getBoundingClientRect().right || event.clientY < viewer.getBoundingClientRect().top || event.clientY > viewer.getBoundingClientRect().bottom)) viewer.close();});
+    })();
+  </script>
+</body>
+</html>

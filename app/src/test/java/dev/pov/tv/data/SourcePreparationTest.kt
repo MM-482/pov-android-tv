@@ -154,6 +154,34 @@ class SourcePreparationTest {
         assertTrue(h.cloud.streamed.isEmpty())
     }
 
+    @Test fun `namespaced custom addon title can prepare exact editions without an IMDb guess`() {
+        val h = Harness()
+        h.cloud.files = listOf(file(11, "Movie.720p.mkv"), file(43, "Movie.1080p.mkv"))
+        val identity = movie.copy(imdbId = "custom:42", catalogNamespace = "original-catalog")
+        val selected = source("Movie").copy(sourceAddonId = "source-provider", resourceType = "movie", resourceId = "custom:42",
+            requestIdentity = SourceRequestIdentity("original-catalog", "custom:42", "movie", "custom:42"))
+        val prepared = h.resolver.prepare(selected, identity) as PreparedSource.Files
+        assertEquals(identity, prepared.identity)
+        assertEquals(listOf(11L, 43L), prepared.files.map { it.id })
+        assertNull(prepared.automaticFile)
+    }
+
+    @Test fun `custom title without explicit addon provenance cannot create a transfer`() {
+        val h = Harness()
+        val identity = movie.copy(imdbId = "custom:42", catalogNamespace = "original-catalog")
+        try { h.resolver.prepare(source("Movie"), identity); fail("Expected provenance requirement") } catch (_: IllegalArgumentException) { }
+        assertEquals(0, h.cloud.added)
+        try { h.resolver.sourcesUncached(identity); fail("Legacy source lookup must retain IMDb contract") } catch (_: IllegalArgumentException) { }
+    }
+
+    @Test fun `custom series source still needs the exact declared episode`() {
+        val h = Harness()
+        val identity = PlaybackIdentity("custom:42", "series", "Show", catalogNamespace = "original-catalog")
+        val selected = source("Show").copy(sourceAddonId = "source-provider", resourceType = "series", resourceId = "episode:exact")
+        try { h.resolver.prepare(selected, identity); fail("Expected episode requirement") } catch (_: IllegalArgumentException) { }
+        assertEquals(0, h.cloud.added)
+    }
+
     private fun source(title: String, fileIndex: Int? = null) = SourceItem(title, "synthetic-provider", infoHash = "a".repeat(40), fileIndex = fileIndex)
     private fun file(id: Long, name: String) = CloudFile(id, name, id * 1000)
     private fun failure(work: () -> Any?): IllegalStateException {

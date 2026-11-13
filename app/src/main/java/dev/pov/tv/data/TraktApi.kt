@@ -218,6 +218,7 @@ class TraktApi internal constructor(
     }
 
     internal fun watchlistBody(identity: PlaybackIdentity): JSONObject {
+        require(identity.catalogNamespace.isBlank()) { "Import this title into the verified catalog before updating Trakt." }
         require(identity.imdbId.matches(Regex("tt[0-9]+"))) { "A matched IMDb title is required for the Trakt watchlist." }
         require(isMovie(identity) || identity.type in setOf("series", "show", "shows")) { "Only movies and shows can be saved to this watchlist." }
         val item = JSONObject().put("ids", JSONObject().put("imdb", identity.imdbId))
@@ -283,7 +284,9 @@ class TraktApi internal constructor(
         Unit
     }
 
-    fun markWatched(identity: PlaybackIdentity) = synchronized(writeLock) {
+    fun markWatched(identity: PlaybackIdentity) = setWatched(identity, true)
+
+    fun setWatched(identity: PlaybackIdentity, watched: Boolean) = synchronized(writeLock) {
         validateIdentity(identity)
         val media = JSONObject().put("ids", JSONObject().put("imdb", identity.imdbId))
         val body = if (isMovie(identity)) {
@@ -294,14 +297,15 @@ class TraktApi internal constructor(
             media.put("seasons", JSONArray().put(season))
             JSONObject().put("shows", JSONArray().put(media))
         }
-        val result = objectRequest("/sync/history", "POST", body)
+        val result = objectRequest(if (watched) "/sync/history" else "/sync/history/remove", "POST", body)
         val missing = result.optJSONObject("not_found")
         if (missing != null && listOf("movies", "shows", "episodes").any { (missing.optJSONArray(it)?.length() ?: 0) > 0 }) {
             throw ApiException(404, "Trakt could not match this title. Its watched status was not changed.")
         }
-        val added = result.optJSONObject("added")
+        val added = result.optJSONObject(if (watched) "added" else "deleted")
         val key = if (isMovie(identity)) "movies" else "episodes"
-        if (added == null || added.optInt(key, 0) <= 0) {
+        val confirmed = added?.let { if (watched) it.optInt(key, 0) > 0 else it.has(key) && it.optInt(key, -1) >= 0 } == true
+        if (!confirmed) {
             throw ApiException(0, "Trakt did not confirm the watched-status update. Please refresh before trying again.")
         }
         Unit
@@ -496,7 +500,7 @@ class TraktApi internal constructor(
     }
 
     private fun invalidDeviceResponse(): Nothing = throw ApiException(0,
-        "Trakt did not return a usable activation code. Choose Connect Trakt to try again. If this continues, update POV or check Trakt's service status.")
+        "Trakt did not return a usable activation code. Choose Connect Trakt to try again. If this continues, update Cameo or check Trakt's service status.")
 
     /** Only fixed messages are displayed; never echo an OAuth response, URL, ID, or token. */
     private fun authError(error: ApiException, starting: Boolean): ApiException {
@@ -508,13 +512,13 @@ class TraktApi internal constructor(
                 "Trakt is limiting requests. Wait $wait seconds, then choose Connect Trakt again."
             }
             error.code in 500..599 -> "Trakt is temporarily unavailable (HTTP ${error.code}). Try connecting again later."
-            error.code in 300..399 -> "Trakt redirected the connection unexpectedly. Update POV and try again."
+            error.code in 300..399 -> "Trakt redirected the connection unexpectedly. Update Cameo and try again."
             error.code == 0 && error.message.orEmpty().contains("timed out") ->
                 "The request to Trakt timed out. Check the TV's internet connection and try again."
             error.code == 0 && error.message.orEmpty().contains("secure connection") ->
                 "A secure connection to Trakt could not be established. Check the TV's date, time, and internet connection."
             error.code == 0 && error.message.orEmpty().contains("unreadable") ->
-                "Trakt returned an unreadable response. Try again later or update POV."
+                "Trakt returned an unreadable response. Try again later or update Cameo."
             error.code == 0 -> "Trakt could not be reached. Check the TV's internet connection and try again."
             starting && error.code in setOf(400, 422) ->
                 "Trakt could not issue an activation code (HTTP ${error.code}). Check this app's Client ID in Settings, save it, then try again."
@@ -554,6 +558,7 @@ class TraktApi internal constructor(
     private fun imdb(value: JSONObject): String? = value.optJSONObject("ids")?.optString("imdb")?.takeIf { it.matches(Regex("tt[0-9]+")) }
     private fun isMovie(identity: PlaybackIdentity): Boolean = identity.type in setOf("movie", "movies")
     private fun validateIdentity(identity: PlaybackIdentity) {
+        require(identity.catalogNamespace.isBlank()) { "Import this title into the verified catalog before Trakt tracking." }
         require(identity.imdbId.matches(Regex("tt[0-9]+"))) { "A matched IMDb title is required for Trakt tracking." }
         require(isMovie(identity) || identity.type in setOf("series", "show", "shows", "episode")) { "Invalid playback title type." }
         if (!isMovie(identity)) require(identity.season >= 0 && identity.episode > 0) { "A specific season and episode are required for Trakt tracking." }

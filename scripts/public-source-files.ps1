@@ -115,3 +115,16 @@ function Get-PovPublicSourceFiles {
     }
     return $files.ToArray() | Sort-Object RelativePath
 }
+
+function Get-CameoPublicSourceFiles {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+    # Validate paths before narrowing the design companions. Archives and unrelated
+    # macOS studies are not inputs to the Android build and do not belong in its ZIP.
+    Get-PovPublicSourceFiles -ProjectRoot $ProjectRoot | Where-Object {
+        $_.RelativePath -notlike 'design/*' -or
+        $_.RelativePath.StartsWith('design/concepts-2026-10-26/') -or
+        $_.RelativePath.StartsWith('design/cameo-mobile-concepts-2026-11-02/') -or
+        $_.RelativePath.StartsWith('design/cameo-android-concepts-2026-11-02/')
+    }
+}

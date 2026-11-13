@@ -1,4 +1,12 @@
-# GitHub source and release checklist
+# Cameo GitHub source and release checklist
+
+The current local candidate is **Cameo Android 0.4.0-preview / code 7**, with its own [setup](INSTALL_0.4.0.md), [changes](RELEASE_NOTES_0.4.0.md), [audit](AUDIT_0.4.0.md) and [native preview gallery](previews/0.4.0/index.html). It passes 688 controlled tests across 88 suites, lint with zero errors, and v2 signature verification. Exact artifact/privacy scan results and hashes are packaged externally. Final physical-device checks are recorded in the version-specific audit. Nothing in this preparation publishes a repository or announcement.
+
+The current package scripts use `Get-CameoPublicSourceFiles`, which first applies the shared `Get-PovPublicSourceFiles` path/private-file guards and then narrows Android design companions. Source and release assets must come from that validated set. Retain the unchanged embedded-library corresponding-source companion and its provenance. No installed account file, token, private URL, signing key or machine configuration belongs in the package.
+
+## Historical records below
+
+The following 0.3.0/0.2.2 records describe earlier POV artifacts. Their device results do not validate the new Cameo APK.
 
 This checklist records technical publication requirements for POV Standalone source and preview releases in the approved [MM-482/pov-android-tv repository](https://github.com/MM-482/pov-android-tv). Consult [public releases](https://github.com/MM-482/pov-android-tv/releases) for published downloads. The version-specific 0.3.0 destination is [v0.3.0-preview](https://github.com/MM-482/pov-android-tv/releases/tag/v0.3.0-preview); older release results remain historical below. These checks preserve source, artifact identity, credits, privacy safeguards and validation limits; they are not an additional owner-approval step.
 

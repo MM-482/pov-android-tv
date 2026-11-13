@@ -63,7 +63,7 @@ internal object PlayerOptionSheet {
                 contentDescription = choice.label + if (choice.checked) ", selected" else ""
                 textSize = 14f; isAllCaps = false; gravity = Gravity.CENTER_VERTICAL or Gravity.START
                 maxLines = 2; minHeight = dp(47); setPadding(dp(14), dp(7), dp(14), dp(7))
-                isFocusable = true; isFocusableInTouchMode = true
+                isFocusable = true; isFocusableInTouchMode = CameoDevice.isTelevision(context)
                 fun style(focused: Boolean) {
                     setTextColor(if (focused) 0xFF03111C.toInt() else if (choice.selectable) Color.WHITE else 0xFF96A5B6.toInt())
                     background = GradientDrawable().apply {

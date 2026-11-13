@@ -18,12 +18,12 @@ class ThemePreferencesTest {
         context.getSharedPreferences("pov_appearance", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
-    @Test fun `new installs use the cinematic concept the user selected`() {
-        assertEquals(ThemeSpec.CINEMATIC, ThemePreferences(context).selected())
+    @Test fun `new TV installs use Cameo Glass`() {
+        assertEquals(ThemeSpec.CAMEO_GLASS, ThemePreferences(context).selected())
     }
 
     @Test fun `every theme choice survives creating a new preference owner`() {
-        for (theme in ThemeSpec.entries) {
+        for (theme in ThemeSpec.selectableThemes) {
             ThemePreferences(context).select(theme)
             assertEquals(theme, ThemePreferences(context).selected())
         }
@@ -32,7 +32,17 @@ class ThemePreferencesTest {
     @Test fun `unknown stored theme safely falls back without changing other preferences`() {
         val saved = context.getSharedPreferences("pov_appearance", Context.MODE_PRIVATE)
         saved.edit().putString("theme", "removed-future-theme").putString("unrelated", "keep").commit()
-        assertEquals(ThemeSpec.CINEMATIC, ThemePreferences(context).selected())
+        assertEquals(ThemeSpec.CAMEO_GLASS, ThemePreferences(context).selected())
+        assertEquals("cameo-glass", saved.getString("theme", null))
         assertEquals("keep", saved.getString("unrelated", null))
+    }
+
+    @Test fun `selecting a legacy definition can never restore a removed TV choice`() {
+        ThemeSpec.entries.filterNot { it.isCameoTv }.forEach { legacy ->
+            ThemePreferences(context).select(legacy)
+            val expected = ThemeSpec.conceptFromId(legacy.id)
+            assertEquals(expected, ThemePreferences(context).selected())
+            assertEquals(expected.id, context.getSharedPreferences("pov_appearance", Context.MODE_PRIVATE).getString("theme", null))
+        }
     }
 }
